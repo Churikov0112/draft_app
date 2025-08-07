@@ -18,6 +18,7 @@ class MatchGame extends FlameGame {
   int team0score = 0;
   int team1score = 0;
   final List<PlayerComponent> players = [];
+
   double elapsedTime = 0;
 
   Vector2 getGoalPositionForTeam(int team) => team == 0 ? rightGoal.position : leftGoal.position;

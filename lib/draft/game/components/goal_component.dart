@@ -6,7 +6,7 @@ import '../match_game.dart';
 class GoalComponent extends PositionComponent with HasGameRef<MatchGame> {
   final int team; // 0 = левая команда, 1 = правая команда
 
-  GoalComponent({required this.team, required Vector2 position}) : super(position: position, size: Vector2(10, 60));
+  GoalComponent({required this.team, required Vector2 position}) : super(position: position, size: Vector2(10, 80));
 
   @override
   void render(Canvas canvas) {
