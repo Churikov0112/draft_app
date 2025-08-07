@@ -1,136 +1,179 @@
 import 'dart:math';
 
-import 'package:collection/collection.dart';
 import 'package:flame/components.dart';
+import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import '../match_game.dart';
 import 'ball_component.dart';
 
 class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
-  final int team;
   final int number;
-  final double radius = 12;
-  final double maxSpeed = 80;
-
+  final int team;
+  double radius = 14.0;
+  double maxSpeed = 100.0;
   Vector2 velocity = Vector2.zero();
   BallComponent? ball;
 
-  PlayerComponent({required this.team, required this.number, required Vector2 position})
-    : super(position: position, size: Vector2.all(24), anchor: Anchor.center);
+  double _lastStealTime = 0;
+  static const double stealCooldown = 1.0;
 
-  void assignBallRef(BallComponent ballRef) {
-    ball = ballRef;
-  }
+  double _lastPassTime = 0;
+  static const double passCooldown = 1.5;
 
-  List<PlayerComponent> get teammates => gameRef.players.where((p) => p != this && p.team == team).toList();
+  PlayerComponent({required this.number, required this.team, Vector2? position})
+    : super(position: position ?? Vector2.zero(), size: Vector2.all(28));
 
-  List<PlayerComponent> get opponents => gameRef.players.where((p) => p.team != team).toList();
+  void assignBallRef(BallComponent b) => ball = b;
 
   @override
   void update(double dt) {
     super.update(dt);
     if (ball == null) return;
 
-    final teammates = gameRef.players.where((p) => p.team == team && p != this).toList();
-    final opponents = gameRef.players.where((p) => p.team != team).toList();
-
-    final isOwner = ball!.owner == this;
-    final isBallOwned = ball!.owner != null;
-
     _applySeparation(dt);
 
-    if (isOwner) {
-      // Дриблинг или пас
-      final openMate = teammates.firstWhereOrNull((p) {
-        final toMate = p.position - position;
-        final dist = toMate.length;
-        final noOpponentClose = opponents.every((o) => (o.position - p.position).length > 100);
-        return dist < 300 && noOpponentClose;
-      });
+    final dirToBall = ball!.position - position;
+    final distToBall = dirToBall.length;
 
-      if (openMate != null) {
-        // Пасуем открытому
-        ball!.kickTowards(openMate.position, 120, gameRef.elapsedTime, this);
-        return;
+    final hasBall = ball!.owner == this;
+    final time = gameRef.elapsedTime;
+
+    if (hasBall) {
+      // === Пытаемся найти открытого тиммейта для паса ===
+      final canPass = (time - _lastPassTime) > passCooldown;
+      if (canPass) {
+        final teammate = _findOpenTeammate();
+        if (teammate != null) {
+          final target = teammate.position + (teammate.velocity * 0.3); // на ход
+          ball!.kickTowards(target, 120, time, this);
+          _lastPassTime = time;
+          return;
+        }
+      }
+
+      // === Ведем мяч к чужим воротам (с лёгким шумом) ===
+      final goal = (team == 0) ? gameRef.rightGoal : gameRef.leftGoal;
+      final goalPos = goal.position;
+
+      // Добавим немного случайности
+      final angleNoise = (Random().nextDouble() - 0.5) * 0.3;
+      final dir = rotated(angleNoise: angleNoise, goalPos: goalPos, position: position);
+      // final dir =  (goalPos - position).normalized().rotated(angleNoise);
+      velocity = dir * maxSpeed * 0.9;
+      position += velocity * dt;
+
+      // Если близко к воротам — удар
+      if ((goalPos - position).length < 60) {
+        ball!.kickTowards(goalPos, 1000, time, this);
       } else {
-        // Дриблинг — уходим вбок или вперёд
-        final dir = ((gameRef.getGoalPositionForTeam(team) - position)..rotate(pi / 12 * (Random().nextDouble() - 0.5)))
-            .normalized();
-        velocity = dir * maxSpeed * 0.8;
-        position += velocity * dt;
-
-        // Ведение мяча
+        // Держим мяч рядом
         ball!.position = position + dir * (radius + ball!.radius + 1);
         ball!.velocity = Vector2.zero();
       }
-    } else if (ball!.owner != null && ball!.owner!.team == team) {
-      // Тиммейт с мячом → открываемся
-      final offset = Vector2(80 + Random().nextDouble() * 40, 50 - Random().nextDouble() * 100);
-      if (team == 1) offset.x *= -1;
-      final target = ball!.owner!.position + offset;
-      final dir = (target - position);
-      if (dir.length > 10) {
-        velocity = dir.normalized() * maxSpeed * 0.6;
-        position += velocity * dt;
-      }
-    } else if (ball!.owner != null && ball!.owner!.team != team) {
-      // Соперник с мячом → идём в отбор
-      final dir = (ball!.position - position);
-      if (dir.length > radius + ball!.radius) {
-        velocity = dir.normalized() * maxSpeed;
-        position += velocity * dt;
-      } else {
-        // попытка отобрать
-        if (ball!.canBeKickedBy(this, gameRef.elapsedTime)) {
-          ball!.takeOwnership(this);
-        }
-      }
     } else {
-      // Мяч свободен
-      final dir = (ball!.position - position);
-      if (dir.length > radius + ball!.radius) {
-        velocity = dir.normalized() * maxSpeed;
-        position += velocity * dt;
+      // === Боремся за мяч или пытаемся отобрать ===
+      if (ball!.owner == null || (ball!.owner?.team != team)) {
+        // Если рядом и можно отобрать
+        if (distToBall < radius + ball!.radius + 2) {
+          if ((time - _lastStealTime) > stealCooldown) {
+            ball!.takeOwnership(this);
+            _lastStealTime = time;
+          }
+        } else {
+          // Двигаемся к мячу
+          final moveDir = dirToBall.normalized();
+          velocity = moveDir * maxSpeed;
+          position += velocity * dt;
+        }
       } else {
-        ball!.takeOwnership(this);
+        // Мяч у тиммейта — открываемся
+        final teammate = ball!.owner!;
+        final offset = Vector2((Random().nextDouble() - 0.5) * 100, (Random().nextDouble() - 0.5) * 100);
+        final target = teammate.position + offset;
+        final moveDir = (target - position).normalized();
+        velocity = moveDir * maxSpeed * 0.8;
+        position += velocity * dt;
       }
     }
 
-    // Границы поля
+    // Ограничение позиции
     position.x = position.x.clamp(radius, gameRef.size.x - radius);
     position.y = position.y.clamp(radius, gameRef.size.y - radius);
   }
 
+  PlayerComponent? _findOpenTeammate() {
+    final teammates = gameRef.players.where((p) => p.team == team && p != this);
+    PlayerComponent? best;
+    double maxDistance = 0;
+
+    for (final t in teammates) {
+      final d = (t.position - position).length;
+      if (d > 60 && d < 300 && d > maxDistance) {
+        maxDistance = d;
+        best = t;
+      }
+    }
+    return best;
+  }
+
   void _applySeparation(double dt) {
-    const separationDistance = 30.0;
-    const separationForce = 100.0;
+    const double minSeparation = 28.0;
 
-    for (final other in gameRef.players) {
-      if (other == this) continue;
-
-      final toOther = other.position - position;
-      final distance = toOther.length;
-      if (distance < separationDistance && distance > 0) {
-        final pushDir = -toOther.normalized();
-        position += pushDir * (separationForce * dt) / distance;
+    for (final c in gameRef.players) {
+      if (c == this) continue;
+      final diff = position - c.position;
+      final dist = diff.length;
+      if (dist < 1e-6) {
+        position += Vector2((Random().nextDouble() - 0.5) * 4, (Random().nextDouble() - 0.5) * 4);
+        continue;
+      }
+      if (dist < minSeparation) {
+        final overlap = minSeparation - dist;
+        final correction = diff.normalized() * (overlap * 0.5);
+        position += correction;
+        c.position -= correction;
       }
     }
   }
 
   @override
   void render(Canvas canvas) {
-    final bodyPaint = Paint()..color = team == 0 ? Colors.red : Colors.white;
-    canvas.drawCircle(Offset.zero, radius, bodyPaint);
+    final shadowPaint = Paint()..color = Colors.black.withOpacity(0.25);
+    canvas.drawCircle(Offset(2, 3), radius * 0.95, shadowPaint);
 
-    final textPainter = TextPainter(
+    final outlinePaint = Paint()..color = Colors.black;
+    canvas.drawCircle(Offset.zero, radius + 2.0, outlinePaint);
+
+    final fillPaint = Paint()..color = (team == 0 ? Colors.blue : Colors.yellow);
+    canvas.drawCircle(Offset.zero, radius, fillPaint);
+
+    final tp = TextPainter(
       text: TextSpan(
-        text: '$number',
-        style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+        text: number.toString(),
+        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
       ),
       textDirection: TextDirection.ltr,
-    )..layout();
+    );
+    tp.layout();
 
-    textPainter.paint(canvas, Offset(-textPainter.width / 2, -textPainter.height / 2));
+    final rectW = tp.width + 8;
+    final rectH = tp.height + 4;
+    final rectOffset = Offset(-rectW / 2, -radius - rectH - 2);
+    final rectPaint = Paint()..color = Colors.black.withOpacity(0.6);
+    final r = Rect.fromLTWH(rectOffset.dx, rectOffset.dy, rectW, rectH);
+    canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(4.0)), rectPaint);
+
+    tp.paint(canvas, Offset(-tp.width / 2, -radius - tp.height - 4));
   }
+}
+
+Vector2 rotated({required double angleNoise, required Vector2 goalPos, required NotifyingVector2 position}) {
+  final angle = angleNoise;
+  final cosA = cos(angle);
+  final sinA = sin(angle);
+
+  final dir = (goalPos - position).normalized();
+  final rotated = Vector2(dir.x * cosA - dir.y * sinA, dir.x * sinA + dir.y * cosA);
+  return rotated;
 }
