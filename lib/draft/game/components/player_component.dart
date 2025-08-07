@@ -16,8 +16,15 @@ class PlayerStats {
   final double lowPass; // Точность паса
   final double shoots; // Сила и точность ударов
   final double defence; // Навыки защиты
+  final double dribbling; //  дриблинг
 
-  PlayerStats({required this.maxSpeed, required this.lowPass, required this.shoots, required this.defence});
+  PlayerStats({
+    required this.maxSpeed,
+    required this.lowPass,
+    required this.shoots,
+    required this.defence,
+    required this.dribbling,
+  });
 }
 
 /// Компонент игрока
@@ -208,7 +215,10 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   /// Перемещение с мячом
   void _moveWithBall(Vector2 dirToGoal, {double? speedFactor}) {
     final isThreatened = _isThreatened(_getOpponentGoal());
-    final baseSpeedFactor = speedFactor ?? (isThreatened ? 0.9 : 0.8);
+
+    final dribblingSkill = stats.dribbling / 100;
+    final speedPenalty = isThreatened ? 0.2 : 0.1; // Базовое замедление при ведении
+    final baseSpeedFactor = speedFactor ?? (1.0 - speedPenalty * (1.0 - dribblingSkill));
 
     final moveDir = isThreatened
         ? _getEvadeDirection(dirToGoal) // Уклонение при угрозе
@@ -221,8 +231,10 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
   /// Расчет направления для уклонения
   Vector2 _getEvadeDirection(Vector2 dirToGoal) {
+    final dribblingSkill = stats.dribbling / 100;
+    final evadeStrength = 0.5 + 0.5 * dribblingSkill; // от 0.5 до 1.0
     final perpendicular = Vector2(-dirToGoal.y, dirToGoal.x);
-    return (dirToGoal + perpendicular * 0.7).normalized();
+    return (dirToGoal + perpendicular * evadeStrength).normalized();
   }
 
   /// Удар по воротам
@@ -304,12 +316,21 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
     final defenceSkill = stats.defence / 100;
     final cooldown = stealCooldown * (1.0 - 0.5 * defenceSkill);
-    final extendedReach = radius + ball!.radius + 2 + 10 * defenceSkill; // Попытка отобрать мяч
 
-    // Попытка отобрать мяч
+    final extendedReach = radius + ball!.radius + 2 + 10 * defenceSkill;
+
+    final ballOwner = ball!.owner;
+    final dribblingSkill = (ballOwner?.stats.dribbling ?? 0) / 100;
+
+    // Вероятность успешного отбора зависит от разницы защиты и дриблинга
+    final stealChance = (defenceSkill - dribblingSkill + 1.0) / 2.0; // от 0 до 1
+
     if (distToBall < extendedReach && (time - _lastStealTime) > cooldown) {
-      ball!.takeOwnership(this);
-      _lastStealTime = time;
+      final success = gameRef.random.nextDouble() < stealChance;
+      if (success) {
+        ball!.takeOwnership(this);
+        _lastStealTime = time;
+      }
     }
   }
 
