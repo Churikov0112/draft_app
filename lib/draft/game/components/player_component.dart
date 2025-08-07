@@ -316,13 +316,19 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   /// Перемещение на свободную позицию
   void _moveToOpenSpace() {
     final attacking = _isAttackingTeam();
-    final home = getHomePosition();
+    // final fieldSize = gameRef.size;
+    final ballPos = ball?.position ?? Vector2.zero();
 
-    // Движение ближе к атаке или вглубь в зависимости от роли
-    final attackBias = _getAttackBias();
-    final target = attacking ? home + attackBias : home;
+    // Базовая тактическая позиция (сместим ее в сторону атаки)
+    final basePos = getHomePosition();
+    final attackShift = _calculateTacticalShift(ballPos, attacking);
 
-    final toTarget = target - position;
+    final target = basePos + attackShift;
+
+    // Учитываем ближайших соперников — не стоим вплотную к ним
+    final safePos = _avoidNearbyOpponents(target);
+
+    final toTarget = safePos - position;
     if (toTarget.length > 4) {
       final speed = attacking ? stats.maxSpeed * 0.6 : stats.maxSpeed * 0.4;
       velocity = toTarget.normalized() * speed;
@@ -330,6 +336,32 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     } else {
       velocity = Vector2.zero();
     }
+  }
+
+  Vector2 _calculateTacticalShift(Vector2 ballPos, bool attacking) {
+    final fieldLength = gameRef.size.x;
+    final fieldWidth = gameRef.size.y;
+
+    // Насколько смещаемся к атаке
+    final attackBiasX = ((ballPos.x - position.x) / fieldLength) * 80;
+    final sideBiasY = ((ballPos.y - position.y) / fieldWidth) * 40;
+
+    // Усиливаем смещение в атаке
+    final multiplier = attacking ? 1.0 : 0.3;
+
+    return Vector2(attackBiasX * multiplier, sideBiasY * multiplier);
+  }
+
+  Vector2 _avoidNearbyOpponents(Vector2 target) {
+    final nearbyEnemies = gameRef.players.where((p) => p.team != team && (p.position - target).length < 40);
+
+    Vector2 avoidance = Vector2.zero();
+    for (final enemy in nearbyEnemies) {
+      final away = (target - enemy.position).normalized();
+      avoidance += away * 20; // отталкиваемся от противников
+    }
+
+    return target + avoidance;
   }
 
   /// Смещение позиции при атаке — для создания глубины и ширины
