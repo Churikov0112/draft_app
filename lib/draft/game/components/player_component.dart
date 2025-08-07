@@ -8,14 +8,31 @@ import 'ball_component.dart';
 
 enum PlayerRole { forward, midfielder, defender }
 
+class PlayerStats {
+  /// 0 - 100
+  final double maxSpeed;
+
+  /// 0 - 100
+  final double lowPass;
+
+  /// 0 - 100
+  final double shoots;
+
+  /// 0 - 100
+  final double defence;
+
+  PlayerStats({required this.maxSpeed, required this.lowPass, required this.shoots, required this.defence});
+}
+
 class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   final int number;
   final int team;
   double radius = 14.0;
-  double maxSpeed = 100.0;
+
   Vector2 velocity = Vector2.zero();
   BallComponent? ball;
   final PlayerRole role;
+  final PlayerStats stats;
 
   double _lastStealTime = 0;
   static const double stealCooldown = 1.0;
@@ -23,8 +40,13 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   double _lastPassTime = 0;
   static const double passCooldown = 2.0;
 
-  PlayerComponent({required this.number, required this.team, required this.role, Vector2? position})
-    : super(position: position ?? Vector2.zero(), size: Vector2.all(28));
+  PlayerComponent({
+    required this.team,
+    required this.number,
+    required this.role,
+    required this.stats,
+    Vector2? position,
+  }) : super(position: position ?? Vector2.zero(), size: Vector2.all(28));
 
   void assignBallRef(BallComponent b) => ball = b;
 
@@ -33,7 +55,6 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     super.update(dt);
     if (ball == null) return;
 
-    // _applySeparation(dt);
     final dirToBall = ball!.position - position;
     final distToBall = dirToBall.length;
     final hasBall = ball!.owner == this;
@@ -52,8 +73,8 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final goal = (team == 0) ? gameRef.rightGoal : gameRef.leftGoal;
     final goalPos = goal.position;
     final dirToGoal = (goalPos - position).normalized();
+    final distToGoal = (goalPos - position).length;
 
-    // Проверка на врагов на пути
     final enemies = gameRef.players.where((p) => p.team != team);
     final threatDetected = enemies.any((enemy) {
       final toEnemy = enemy.position - position;
@@ -63,38 +84,50 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     });
 
     final canPass = (time - _lastPassTime) > passCooldown;
-
     if (threatDetected && canPass) {
       final teammate = _findOpenTeammate();
       if (teammate != null) {
+        final passSkill = stats.lowPass / 100;
+        final leadFactor = 0.2 + 0.5 * passSkill;
+        final target = teammate.position + (teammate.velocity * leadFactor);
+
         final toTeammate = teammate.position - position;
-        final target = teammate.position + (teammate.velocity * 0.3);
-
-        final dist = toTeammate.length;
-
-        // Рассчитываем силу паса в зависимости от расстояния
-        // Можно варьировать коэффициенты при необходимости
-        final passPower = dist * 3.0; // Пример: 100px -> сила 300
-
-        ball!.kickTowards(target, passPower.clamp(200, 800), time, this);
-        print("player $number passed under pressure to ${teammate.number} with power ${passPower.toStringAsFixed(1)}");
-        _lastPassTime = time;
+        if (_isPassSafe(position, target, tolerance: 25 + 20 * (1 - passSkill))) {
+          final basePower = toTeammate.length * 3.0;
+          final passPower = basePower * (0.9 + 0.2 * passSkill);
+          ball!.kickTowards(target, passPower.clamp(200, 800), time, this);
+          _lastPassTime = time;
+          print("player $number passed to ${teammate.number}");
+          return;
+        }
       }
     }
 
-    // Движение к воротам
-    final angleNoise = (Random().nextDouble() - 0.5) * 0.3;
-    final dir = dirToGoal.rotated(angleNoise);
-
-    velocity = dir * maxSpeed * 0.9;
-    position += velocity * dt;
-
-    if ((goalPos - position).length < 200) {
-      ball!.kickTowards(goalPos, 1000, time, this);
-      print("player $number shoots at goal!");
-    } else {
-      // Удерживаем мяч рядом
+    if (threatDetected) {
+      final perpendicular = Vector2(-dirToGoal.y, dirToGoal.x);
+      final dir = (dirToGoal + perpendicular * 0.7).normalized();
+      velocity = dir * stats.maxSpeed * 0.9;
+      position += velocity * dt;
       ball!.position = position + dir * (radius + ball!.radius + 1);
+    } else {
+      final dir = dirToGoal;
+      velocity = dir * stats.maxSpeed * 0.8;
+      position += velocity * dt;
+      ball!.position = position + dir * (radius + ball!.radius + 1);
+    }
+
+    // 🟢 Удар в воротах — в одном месте
+    if (distToGoal < 100) {
+      final shootSkill = stats.shoots / 100;
+      final goalHeight = 60.0;
+      final verticalSpread = goalHeight * 0.5 * (1 - shootSkill);
+      final dy = (gameRef.random.nextDouble() - 0.5) * 2 * verticalSpread;
+
+      final target = goalPos + Vector2(0, dy); // только смещение по Y
+      final power = 600 + 400 * shootSkill;
+
+      ball!.kickTowards(target, power, time, this);
+      print("player $number shoots at goal!");
     }
   }
 
@@ -107,51 +140,53 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final isBallFree = ball!.owner == null;
     final isOpponentOwner = ball!.owner != null && ball!.owner!.team != team;
 
-    final allPlayers = gameRef.players;
-    final sameTeam = allPlayers.where((p) => p.team == team).toList();
-
-    // Определяем ближайшего к мячу игрока нашей команды
-    final sortedByDist = sameTeam.toList()
+    final sameTeam = gameRef.players.where((p) => p.team == team).toList();
+    final sortedByDist = sameTeam
       ..sort((a, b) => (a.position - ball!.position).length.compareTo((b.position - ball!.position).length));
-
     final isDesignatedPresser = identical(this, sortedByDist.first);
 
     if (isBallFree || isOpponentOwner) {
-      // Только один игрок активно атакует
       if (isDesignatedPresser) {
         final moveDir = dirToBall.normalized();
-        velocity = moveDir * maxSpeed;
+        velocity = moveDir * stats.maxSpeed;
         position += velocity * dt;
 
-        // Пытаемся отобрать мяч
-        if (distToBall < radius + ball!.radius + 2 && (time - _lastStealTime) > stealCooldown) {
+        // final nearBall = distToBall < radius + ball!.radius + 2;
+        // final notInCooldown = (time - _lastStealTime) > stealCooldown;
+
+        final defenceSkill = stats.defence / 100;
+        final cooldown = stealCooldown * (1.0 - 0.5 * defenceSkill);
+        final extendedReach = radius + ball!.radius + 2 + 10 * defenceSkill;
+
+        final nearBall = distToBall < extendedReach;
+        final notInCooldown = (time - _lastStealTime) > cooldown;
+
+        if (nearBall && notInCooldown) {
           ball!.takeOwnership(this);
           _lastStealTime = time;
         }
       } else {
-        // Остальные остаются рядом, но не сближаются
-        final desiredPos = getHomePosition();
-        final toHome = desiredPos - position;
-        final dist = toHome.length;
-        if (dist > 4) {
-          final moveDir = toHome.normalized();
-          velocity = moveDir * maxSpeed * 0.4;
-          position += velocity * dt;
-        } else {
-          velocity = Vector2.zero();
-        }
+        _moveToOpenSpace(dt);
       }
     } else {
-      // Наша команда с мячом — возвращаемся в зону
-      final home = getHomePosition();
-      final toHome = home - position;
-      if (toHome.length > 5) {
-        final moveDir = toHome.normalized();
-        velocity = moveDir * maxSpeed * 0.5;
-        position += velocity * dt;
-      } else {
-        velocity = Vector2.zero();
-      }
+      _moveToOpenSpace(dt);
+    }
+  }
+
+  void _moveToOpenSpace(double dt) {
+    final closestEnemy = gameRef.players
+        .where((p) => p.team != team)
+        .reduce((a, b) => (a.position - position).length < (b.position - position).length ? a : b);
+
+    final awayFromEnemy = (position - closestEnemy.position).normalized();
+    final desiredPos = getHomePosition() + awayFromEnemy * 30;
+
+    final toDesired = desiredPos - position;
+    if (toDesired.length > 4) {
+      velocity = toDesired.normalized() * stats.maxSpeed * 0.4;
+      position += velocity * dt;
+    } else {
+      velocity = Vector2.zero();
     }
   }
 
@@ -160,24 +195,22 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     PlayerComponent? best;
     double bestScore = -1;
 
+    final goalPos = (team == 0 ? gameRef.rightGoal.position : gameRef.leftGoal.position);
+    final goalDistNow = (goalPos - position).length;
+
     for (final t in teammates) {
       final toTeammate = t.position - position;
       final dist = toTeammate.length;
+      final goalDistThen = (goalPos - t.position).length;
 
-      // Учитываем:
-      // 1. Дистанцию (предпочитаем среднюю дистанцию)
-      // 2. Угол относительно направления к воротам
-      // 3. Свободное пространство вокруг
-
-      final goalDir = (team == 0 ? gameRef.rightGoal.position : gameRef.leftGoal.position) - position;
-
+      final goalDir = goalPos - position;
       final angle = goalDir.angleTo(toTeammate).abs();
 
-      // Чем больше угол (до 90 градусов) и оптимальнее дистанция, тем лучше
-      final distScore = 1 - (dist - 150).abs() / 150; // Оптимально 150 пикселей
+      final distScore = 1 - (dist - 150).abs() / 150;
       final angleScore = 1 - angle / (pi / 2);
+      final progressScore = goalDistThen < goalDistNow ? 1.0 : 0.0;
 
-      final totalScore = distScore * 0.6 + angleScore * 0.4;
+      final totalScore = distScore * 0.4 + angleScore * 0.3 + progressScore * 0.3;
 
       if (dist > 80 && dist < 350 && totalScore > bestScore) {
         bestScore = totalScore;
@@ -187,30 +220,24 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     return best;
   }
 
+  bool _isPassSafe(Vector2 from, Vector2 to, {double tolerance = 25}) {
+    final enemies = gameRef.players.where((p) => p.team != team);
+    for (final enemy in enemies) {
+      final toEnemy = enemy.position - from;
+      final toTarget = to - from;
+      final proj = toEnemy.dot(toTarget.normalized());
+      if (proj < 0 || proj > toTarget.length) continue;
+
+      final perpendicular = toEnemy - toTarget.normalized() * proj;
+      if (perpendicular.length < tolerance) return false;
+    }
+    return true;
+  }
+
   void _clampPosition() {
     position.x = position.x.clamp(radius, gameRef.size.x - radius);
     position.y = position.y.clamp(radius, gameRef.size.y - radius);
   }
-
-  // void _applySeparation(double dt) {
-  //   const double minSeparation = 28.0;
-
-  //   for (final c in gameRef.players) {
-  //     if (c == this) continue;
-  //     final diff = position - c.position;
-  //     final dist = diff.length;
-  //     if (dist < 1e-6) {
-  //       position += Vector2((Random().nextDouble() - 0.5) * 4, (Random().nextDouble() - 0.5) * 4);
-  //       continue;
-  //     }
-  //     if (dist < minSeparation) {
-  //       final overlap = minSeparation - dist;
-  //       final correction = diff.normalized() * (overlap * 0.5);
-  //       position += correction;
-  //       c.position -= correction;
-  //     }
-  //   }
-  // }
 
   Vector2 getHomePosition() {
     final fieldSize = gameRef.size;
@@ -228,7 +255,6 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
         break;
     }
 
-    // Разброс по вертикали (по номеру)
     final spacing = fieldSize.y / 6;
     final y = spacing * (number % 6 + 0.5);
 
@@ -237,18 +263,15 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
   @override
   void render(Canvas canvas) {
-    // Тень
     final shadowPaint = Paint()..color = Colors.black.withOpacity(0.25);
     canvas.drawCircle(Offset(2, 3), radius * 0.95, shadowPaint);
 
-    // Тело игрока
     final outlinePaint = Paint()..color = Colors.black;
     canvas.drawCircle(Offset.zero, radius + 2.0, outlinePaint);
 
     final fillPaint = Paint()..color = (team == 0 ? Colors.blue : Colors.yellow);
     canvas.drawCircle(Offset.zero, radius, fillPaint);
 
-    // Номер
     final textPainter = TextPainter(
       text: TextSpan(
         text: number.toString(),
