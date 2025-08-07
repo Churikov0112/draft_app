@@ -18,7 +18,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   final PlayerRole role;
 
   double _lastStealTime = 0;
-  static const double stealCooldown = 2.0;
+  static const double stealCooldown = 1.0;
 
   double _lastPassTime = 0;
   static const double passCooldown = 2.0;
@@ -28,36 +28,12 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
   void assignBallRef(BallComponent b) => ball = b;
 
-  Vector2 getHomePosition() {
-    final fieldSize = gameRef.size;
-    final centerY = fieldSize.y / 2;
-
-    double xZone;
-    switch (role) {
-      case PlayerRole.defender:
-        xZone = (team == 0) ? fieldSize.x * 0.2 : fieldSize.x * 0.8;
-        break;
-      case PlayerRole.midfielder:
-        xZone = (team == 0) ? fieldSize.x * 0.4 : fieldSize.x * 0.6;
-        break;
-      case PlayerRole.forward:
-        xZone = (team == 0) ? fieldSize.x * 0.65 : fieldSize.x * 0.35;
-        break;
-    }
-
-    // Разброс по вертикали (по номеру)
-    final spacing = fieldSize.y / 6;
-    final y = spacing * (number % 6 + 0.5);
-
-    return Vector2(xZone, y);
-  }
-
   @override
   void update(double dt) {
     super.update(dt);
     if (ball == null) return;
 
-    _applySeparation(dt);
+    // _applySeparation(dt);
     final dirToBall = ball!.position - position;
     final distToBall = dirToBall.length;
     final hasBall = ball!.owner == this;
@@ -79,8 +55,10 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
       final teammate = _findOpenTeammate();
       if (teammate != null) {
         final target = teammate.position + (teammate.velocity * 0.3);
-        ball!.kickTowards(target, 500, time, this);
+        ball!.kickTowards(target, 1500, time, this);
+        print("player $number passed ${teammate.number}");
         _lastPassTime = time;
+
         // Убрали return, чтобы игрок продолжал двигаться!
       }
     }
@@ -131,11 +109,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
         // Пытаемся отобрать мяч
         if (distToBall < radius + ball!.radius + 2 && (time - _lastStealTime) > stealCooldown) {
-          final randomFactor = Random().nextDouble();
-          double needRandomFactor = team == 0 ? 0.9 : 0.8;
-          if (randomFactor >= needRandomFactor) {
-            ball!.takeOwnership(this);
-          }
+          ball!.takeOwnership(this);
           _lastStealTime = time;
         }
       } else {
@@ -202,24 +176,47 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     position.y = position.y.clamp(radius, gameRef.size.y - radius);
   }
 
-  void _applySeparation(double dt) {
-    const double minSeparation = 28.0;
+  // void _applySeparation(double dt) {
+  //   const double minSeparation = 28.0;
 
-    for (final c in gameRef.players) {
-      if (c == this) continue;
-      final diff = position - c.position;
-      final dist = diff.length;
-      if (dist < 1e-6) {
-        position += Vector2((Random().nextDouble() - 0.5) * 4, (Random().nextDouble() - 0.5) * 4);
-        continue;
-      }
-      if (dist < minSeparation) {
-        final overlap = minSeparation - dist;
-        final correction = diff.normalized() * (overlap * 0.5);
-        position += correction;
-        c.position -= correction;
-      }
+  //   for (final c in gameRef.players) {
+  //     if (c == this) continue;
+  //     final diff = position - c.position;
+  //     final dist = diff.length;
+  //     if (dist < 1e-6) {
+  //       position += Vector2((Random().nextDouble() - 0.5) * 4, (Random().nextDouble() - 0.5) * 4);
+  //       continue;
+  //     }
+  //     if (dist < minSeparation) {
+  //       final overlap = minSeparation - dist;
+  //       final correction = diff.normalized() * (overlap * 0.5);
+  //       position += correction;
+  //       c.position -= correction;
+  //     }
+  //   }
+  // }
+
+  Vector2 getHomePosition() {
+    final fieldSize = gameRef.size;
+
+    double xZone;
+    switch (role) {
+      case PlayerRole.defender:
+        xZone = (team == 0) ? fieldSize.x * 0.2 : fieldSize.x * 0.8;
+        break;
+      case PlayerRole.midfielder:
+        xZone = (team == 0) ? fieldSize.x * 0.4 : fieldSize.x * 0.6;
+        break;
+      case PlayerRole.forward:
+        xZone = (team == 0) ? fieldSize.x * 0.65 : fieldSize.x * 0.35;
+        break;
     }
+
+    // Разброс по вертикали (по номеру)
+    final spacing = fieldSize.y / 6;
+    final y = spacing * (number % 6 + 0.5);
+
+    return Vector2(xZone, y);
   }
 
   @override
