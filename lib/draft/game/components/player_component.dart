@@ -1,7 +1,6 @@
 import 'dart:math';
 
 import 'package:flame/components.dart';
-import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import '../match_game.dart';
@@ -32,72 +31,82 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     if (ball == null) return;
 
     _applySeparation(dt);
-
     final dirToBall = ball!.position - position;
     final distToBall = dirToBall.length;
-
     final hasBall = ball!.owner == this;
     final time = gameRef.elapsedTime;
 
     if (hasBall) {
-      // === Пытаемся найти открытого тиммейта для паса ===
-      final canPass = (time - _lastPassTime) > passCooldown;
-      if (canPass) {
-        final teammate = _findOpenTeammate();
-        if (teammate != null) {
-          final target = teammate.position + (teammate.velocity * 0.3); // на ход
-          ball!.kickTowards(target, 120, time, this);
-          _lastPassTime = time;
-          return;
-        }
-      }
-
-      // === Ведем мяч к чужим воротам (с лёгким шумом) ===
-      final goal = (team == 0) ? gameRef.rightGoal : gameRef.leftGoal;
-      final goalPos = goal.position;
-
-      // Добавим немного случайности
-      final angleNoise = (Random().nextDouble() - 0.5) * 0.3;
-      final dir = rotated(angleNoise: angleNoise, goalPos: goalPos, position: position);
-      // final dir =  (goalPos - position).normalized().rotated(angleNoise);
-      velocity = dir * maxSpeed * 0.9;
-      position += velocity * dt;
-
-      // Если близко к воротам — удар
-      if ((goalPos - position).length < 60) {
-        ball!.kickTowards(goalPos, 1000, time, this);
-      } else {
-        // Держим мяч рядом
-        ball!.position = position + dir * (radius + ball!.radius + 1);
-        ball!.velocity = Vector2.zero();
-      }
+      _handleBallPossession(time: time, dt: dt);
     } else {
-      // === Боремся за мяч или пытаемся отобрать ===
-      if (ball!.owner == null || (ball!.owner?.team != team)) {
-        // Если рядом и можно отобрать
-        if (distToBall < radius + ball!.radius + 2) {
-          if ((time - _lastStealTime) > stealCooldown) {
-            ball!.takeOwnership(this);
-            _lastStealTime = time;
-          }
-        } else {
-          // Двигаемся к мячу
-          final moveDir = dirToBall.normalized();
-          velocity = moveDir * maxSpeed;
-          position += velocity * dt;
-        }
-      } else {
-        // Мяч у тиммейта — открываемся
-        final teammate = ball!.owner!;
-        final offset = Vector2((Random().nextDouble() - 0.5) * 100, (Random().nextDouble() - 0.5) * 100);
-        final target = teammate.position + offset;
-        final moveDir = (target - position).normalized();
-        velocity = moveDir * maxSpeed * 0.8;
-        position += velocity * dt;
+      _handleBallChasing(time: time, distToBall: distToBall, dirToBall: dirToBall, dt: dt);
+    }
+
+    _clampPosition();
+  }
+
+  void _handleBallPossession({required double time, required double dt}) {
+    // Пытаемся сделать пас
+    final canPass = (time - _lastPassTime) > passCooldown;
+    if (canPass) {
+      final teammate = _findOpenTeammate();
+      if (teammate != null) {
+        final target = teammate.position + (teammate.velocity * 0.3);
+        ball!.kickTowards(target, 500, time, this);
+        _lastPassTime = time;
+        // Убрали return, чтобы игрок продолжал двигаться!
       }
     }
 
-    // Ограничение позиции
+    // Движение к воротам
+    final goal = (team == 0) ? gameRef.rightGoal : gameRef.leftGoal;
+    final goalPos = goal.position;
+    final angleNoise = (Random().nextDouble() - 0.5) * 0.3;
+    final dir = (goalPos - position).normalized().rotated(angleNoise);
+
+    velocity = dir * maxSpeed * 0.9;
+    position += velocity * dt;
+
+    // Удар по воротам при приближении
+    if ((goalPos - position).length < 200) {
+      ball!.kickTowards(goalPos, 1000, time, this);
+    } else {
+      // Удерживаем мяч рядом
+      ball!.position = position + dir * (radius + ball!.radius + 1);
+      ball!.velocity = Vector2.zero();
+    }
+  }
+
+  void _handleBallChasing({
+    required double time,
+    required double distToBall,
+    required Vector2 dirToBall,
+    required double dt,
+  }) {
+    if (ball!.owner == null || ball!.owner!.team != team) {
+      // Если мяч свободен или у противника - бежим к нему
+      if (distToBall < radius + ball!.radius + 2) {
+        if ((time - _lastStealTime) > stealCooldown) {
+          ball!.takeOwnership(this);
+          _lastStealTime = time;
+        }
+      } else {
+        final moveDir = dirToBall.normalized();
+        velocity = moveDir * maxSpeed;
+        position += velocity * dt;
+      }
+    } else {
+      // Если мяч у тиммейта - открываемся для паса
+      final teammate = ball!.owner!;
+      final offset = Vector2((Random().nextDouble() - 0.5) * 100, (Random().nextDouble() - 0.5) * 100);
+      final target = teammate.position + offset;
+      final moveDir = (target - position).normalized();
+      velocity = moveDir * maxSpeed * 0.8;
+      position += velocity * dt;
+    }
+  }
+
+  void _clampPosition() {
     position.x = position.x.clamp(radius, gameRef.size.x - radius);
     position.y = position.y.clamp(radius, gameRef.size.y - radius);
   }
@@ -139,41 +148,34 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
   @override
   void render(Canvas canvas) {
+    // Тень
     final shadowPaint = Paint()..color = Colors.black.withOpacity(0.25);
     canvas.drawCircle(Offset(2, 3), radius * 0.95, shadowPaint);
 
+    // Тело игрока
     final outlinePaint = Paint()..color = Colors.black;
     canvas.drawCircle(Offset.zero, radius + 2.0, outlinePaint);
 
     final fillPaint = Paint()..color = (team == 0 ? Colors.blue : Colors.yellow);
     canvas.drawCircle(Offset.zero, radius, fillPaint);
 
-    final tp = TextPainter(
+    // Номер
+    final textPainter = TextPainter(
       text: TextSpan(
         text: number.toString(),
         style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
       ),
       textDirection: TextDirection.ltr,
     );
-    tp.layout();
-
-    final rectW = tp.width + 8;
-    final rectH = tp.height + 4;
-    final rectOffset = Offset(-rectW / 2, -radius - rectH - 2);
-    final rectPaint = Paint()..color = Colors.black.withOpacity(0.6);
-    final r = Rect.fromLTWH(rectOffset.dx, rectOffset.dy, rectW, rectH);
-    canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(4.0)), rectPaint);
-
-    tp.paint(canvas, Offset(-tp.width / 2, -radius - tp.height - 4));
+    textPainter.layout();
+    textPainter.paint(canvas, Offset(-textPainter.width / 2, -radius - textPainter.height - 4));
   }
 }
 
-Vector2 rotated({required double angleNoise, required Vector2 goalPos, required NotifyingVector2 position}) {
-  final angle = angleNoise;
-  final cosA = cos(angle);
-  final sinA = sin(angle);
-
-  final dir = (goalPos - position).normalized();
-  final rotated = Vector2(dir.x * cosA - dir.y * sinA, dir.x * sinA + dir.y * cosA);
-  return rotated;
+extension Vector2Rotation on Vector2 {
+  Vector2 rotated(double angle) {
+    final cosA = cos(angle);
+    final sinA = sin(angle);
+    return Vector2(x * cosA - y * sinA, x * sinA + y * cosA);
+  }
 }
