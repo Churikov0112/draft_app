@@ -105,7 +105,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
       }
 
       // Защитники двигаются с мячом осторожнее — с меньшей скоростью
-      _moveWithBall(dirToGoal, speedFactor: 0.5);
+      _moveWithBall(dirToGoal);
     } else {
       // Для остальных роль оставляем без изменений
 
@@ -124,7 +124,8 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
   /// Проверка, нужно ли делать пас
   bool _shouldPass(double time) {
-    return (time - _lastPassTime) > passCooldown && _isThreatened(_getOpponentGoal());
+    final cooldown = (role == PlayerRole.defender) ? passCooldown * 0.5 : passCooldown;
+    return (time - _lastPassTime) > cooldown && _isThreatened(_getOpponentGoal());
   }
 
   /// Проверка наличия угрозы от соперников
@@ -166,7 +167,35 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   /// Расчет цели для паса с упреждением
   Vector2 _calculatePassTarget(PlayerComponent teammate) {
     final leadFactor = 0.2 + 0.5 * (stats.lowPass / 100);
-    return teammate.position + (teammate.velocity * leadFactor);
+
+    // Изначальный пас с упреждением
+    Vector2 predictedPos = teammate.position + (teammate.velocity * leadFactor);
+
+    // Попытаемся найти свободную точку рядом с predictedPos
+    final freeSpot = _findFreeZoneNear(predictedPos);
+
+    return freeSpot;
+  }
+
+  Vector2 _findFreeZoneNear(Vector2 pos, {double radius = 50, int attempts = 10}) {
+    final random = gameRef.random;
+
+    for (int i = 0; i < attempts; i++) {
+      // Случайное смещение в радиусе
+      final offset =
+          Vector2(random.nextDouble() * 2 - 1, random.nextDouble() * 2 - 1).normalized() * random.nextDouble() * radius;
+      final testPos = pos + offset;
+
+      // Проверяем, нет ли рядом соперников в зоне 30 пикселей
+      final safe = !gameRef.players.any((p) => p.team != team && (p.position - testPos).length < 30);
+
+      if (safe) {
+        return testPos;
+      }
+    }
+
+    // Если не нашли безопасную зону, возвращаем исходную позицию
+    return pos;
   }
 
   /// Расчет силы паса
