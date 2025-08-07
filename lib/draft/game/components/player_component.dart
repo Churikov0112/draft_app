@@ -84,7 +84,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     required double dt,
   }) {
     if (ball!.owner == null || ball!.owner!.team != team) {
-      // Если мяч свободен или у противника - бежим к нему
+      // Прессинг мяча (оставляем без изменений)
       if (distToBall < radius + ball!.radius + 2) {
         if ((time - _lastStealTime) > stealCooldown) {
           ball!.takeOwnership(this);
@@ -96,34 +96,61 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
         position += velocity * dt;
       }
     } else {
-      // Если мяч у тиммейта - открываемся для паса
+      // Новый улучшенный алгоритм открывания для паса
       final teammate = ball!.owner!;
-      final offset = Vector2((Random().nextDouble() - 0.5) * 100, (Random().nextDouble() - 0.5) * 100);
-      final target = teammate.position + offset;
-      final moveDir = (target - position).normalized();
-      velocity = moveDir * maxSpeed * 0.8;
+      final toTeammate = (teammate.position - position).normalized();
+
+      // Базовое смещение - перпендикулярно линии к тиммейту
+      final baseOffset = Vector2(-toTeammate.y, toTeammate.x) * 120;
+
+      // Добавляем случайность и глубину
+      final randomOffset = Vector2((Random().nextDouble() - 0.5) * 80, (Random().nextDouble() - 0.5) * 80);
+
+      // Выбираем позицию дальше от мяча
+      final target = teammate.position + baseOffset + randomOffset;
+
+      // Двигаемся плавнее к целевой позиции
+      final desiredVelocity = (target - position).normalized() * maxSpeed * 0.7;
+      velocity = velocity * 0.6 + desiredVelocity * 0.4;
       position += velocity * dt;
     }
-  }
-
-  void _clampPosition() {
-    position.x = position.x.clamp(radius, gameRef.size.x - radius);
-    position.y = position.y.clamp(radius, gameRef.size.y - radius);
   }
 
   PlayerComponent? _findOpenTeammate() {
     final teammates = gameRef.players.where((p) => p.team == team && p != this);
     PlayerComponent? best;
-    double maxDistance = 0;
+    double bestScore = -1;
 
     for (final t in teammates) {
-      final d = (t.position - position).length;
-      if (d > 60 && d < 300 && d > maxDistance) {
-        maxDistance = d;
+      final toTeammate = t.position - position;
+      final dist = toTeammate.length;
+
+      // Учитываем:
+      // 1. Дистанцию (предпочитаем среднюю дистанцию)
+      // 2. Угол относительно направления к воротам
+      // 3. Свободное пространство вокруг
+
+      final goalDir = (team == 0 ? gameRef.rightGoal.position : gameRef.leftGoal.position) - position;
+
+      final angle = goalDir.angleTo(toTeammate).abs();
+
+      // Чем больше угол (до 90 градусов) и оптимальнее дистанция, тем лучше
+      final distScore = 1 - (dist - 150).abs() / 150; // Оптимально 150 пикселей
+      final angleScore = 1 - angle / (pi / 2);
+
+      final totalScore = distScore * 0.6 + angleScore * 0.4;
+
+      if (dist > 80 && dist < 350 && totalScore > bestScore) {
+        bestScore = totalScore;
         best = t;
       }
     }
     return best;
+  }
+
+  void _clampPosition() {
+    position.x = position.x.clamp(radius, gameRef.size.x - radius);
+    position.y = position.y.clamp(radius, gameRef.size.y - radius);
   }
 
   void _applySeparation(double dt) {
