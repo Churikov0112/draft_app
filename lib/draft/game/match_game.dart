@@ -16,6 +16,10 @@ class MatchGame extends FlameGame {
   final List<PlayerComponent> players = [];
   double elapsedTime = 0;
 
+  Vector2 getGoalPositionForTeam(int team) {
+    return team == 0 ? rightGoal.position : leftGoal.position;
+  }
+
   @override
   Future<void> onLoad() async {
     // Поле (фон)
@@ -32,12 +36,12 @@ class MatchGame extends FlameGame {
     add(ball);
 
     // Игроки команды 0 (слева)
-    final playerA1 = PlayerComponent(id: 7, team: 0, position: Vector2(100, size.y / 2 - 50));
-    final playerA2 = PlayerComponent(id: 8, team: 0, position: Vector2(100, size.y / 2 + 50));
+    final playerA1 = PlayerComponent(number: 7, team: 0, position: Vector2(100, size.y / 2 - 50));
+    final playerA2 = PlayerComponent(number: 8, team: 0, position: Vector2(100, size.y / 2 + 50));
 
     // Игроки команды 1 (справа)
-    final playerB1 = PlayerComponent(id: 9, team: 1, position: Vector2(size.x - 100, size.y / 2 - 50));
-    final playerB2 = PlayerComponent(id: 10, team: 1, position: Vector2(size.x - 100, size.y / 2 + 50));
+    final playerB1 = PlayerComponent(number: 9, team: 1, position: Vector2(size.x - 100, size.y / 2 - 50));
+    final playerB2 = PlayerComponent(number: 10, team: 1, position: Vector2(size.x - 100, size.y / 2 + 50));
 
     // Добавляем игроков и связываем с мячом
     for (final p in [playerA1, playerA2, playerB1, playerB2]) {
