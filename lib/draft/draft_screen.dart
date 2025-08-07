@@ -27,12 +27,7 @@ class _MatchScreenState extends State<MatchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('MVP: 1v1 Match'),
-      ),
-      body: GameWidget(
-        game: _game,
-      ),
+      body: SafeArea(child: GameWidget(game: _game)),
     );
   }
 }

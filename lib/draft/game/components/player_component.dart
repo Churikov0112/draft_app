@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../match_game.dart';
 import 'ball_component.dart';
 
+enum PlayerRole { forward, midfielder, defender }
+
 class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   final int number;
   final int team;
@@ -13,17 +15,42 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   double maxSpeed = 100.0;
   Vector2 velocity = Vector2.zero();
   BallComponent? ball;
+  final PlayerRole role;
 
   double _lastStealTime = 0;
-  static const double stealCooldown = 1.0;
+  static const double stealCooldown = 2.0;
 
   double _lastPassTime = 0;
-  static const double passCooldown = 1.5;
+  static const double passCooldown = 2.0;
 
-  PlayerComponent({required this.number, required this.team, Vector2? position})
+  PlayerComponent({required this.number, required this.team, required this.role, Vector2? position})
     : super(position: position ?? Vector2.zero(), size: Vector2.all(28));
 
   void assignBallRef(BallComponent b) => ball = b;
+
+  Vector2 getHomePosition() {
+    final fieldSize = gameRef.size;
+    final centerY = fieldSize.y / 2;
+
+    double xZone;
+    switch (role) {
+      case PlayerRole.defender:
+        xZone = (team == 0) ? fieldSize.x * 0.2 : fieldSize.x * 0.8;
+        break;
+      case PlayerRole.midfielder:
+        xZone = (team == 0) ? fieldSize.x * 0.4 : fieldSize.x * 0.6;
+        break;
+      case PlayerRole.forward:
+        xZone = (team == 0) ? fieldSize.x * 0.65 : fieldSize.x * 0.35;
+        break;
+    }
+
+    // Разброс по вертикали (по номеру)
+    final spacing = fieldSize.y / 6;
+    final y = spacing * (number % 6 + 0.5);
+
+    return Vector2(xZone, y);
+  }
 
   @override
   void update(double dt) {
@@ -83,36 +110,58 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     required Vector2 dirToBall,
     required double dt,
   }) {
-    if (ball!.owner == null || ball!.owner!.team != team) {
-      // Прессинг мяча (оставляем без изменений)
-      if (distToBall < radius + ball!.radius + 2) {
-        if ((time - _lastStealTime) > stealCooldown) {
-          ball!.takeOwnership(this);
-          _lastStealTime = time;
-        }
-      } else {
+    final isBallFree = ball!.owner == null;
+    final isOpponentOwner = ball!.owner != null && ball!.owner!.team != team;
+
+    final allPlayers = gameRef.players;
+    final sameTeam = allPlayers.where((p) => p.team == team).toList();
+
+    // Определяем ближайшего к мячу игрока нашей команды
+    final sortedByDist = sameTeam.toList()
+      ..sort((a, b) => (a.position - ball!.position).length.compareTo((b.position - ball!.position).length));
+
+    final isDesignatedPresser = identical(this, sortedByDist.first);
+
+    if (isBallFree || isOpponentOwner) {
+      // Только один игрок активно атакует
+      if (isDesignatedPresser) {
         final moveDir = dirToBall.normalized();
         velocity = moveDir * maxSpeed;
         position += velocity * dt;
+
+        // Пытаемся отобрать мяч
+        if (distToBall < radius + ball!.radius + 2 && (time - _lastStealTime) > stealCooldown) {
+          final randomFactor = Random().nextDouble();
+          double needRandomFactor = team == 0 ? 0.9 : 0.8;
+          if (randomFactor >= needRandomFactor) {
+            ball!.takeOwnership(this);
+          }
+          _lastStealTime = time;
+        }
+      } else {
+        // Остальные остаются рядом, но не сближаются
+        final desiredPos = getHomePosition();
+        final toHome = desiredPos - position;
+        final dist = toHome.length;
+        if (dist > 4) {
+          final moveDir = toHome.normalized();
+          velocity = moveDir * maxSpeed * 0.4;
+          position += velocity * dt;
+        } else {
+          velocity = Vector2.zero();
+        }
       }
     } else {
-      // Новый улучшенный алгоритм открывания для паса
-      final teammate = ball!.owner!;
-      final toTeammate = (teammate.position - position).normalized();
-
-      // Базовое смещение - перпендикулярно линии к тиммейту
-      final baseOffset = Vector2(-toTeammate.y, toTeammate.x) * 120;
-
-      // Добавляем случайность и глубину
-      final randomOffset = Vector2((Random().nextDouble() - 0.5) * 80, (Random().nextDouble() - 0.5) * 80);
-
-      // Выбираем позицию дальше от мяча
-      final target = teammate.position + baseOffset + randomOffset;
-
-      // Двигаемся плавнее к целевой позиции
-      final desiredVelocity = (target - position).normalized() * maxSpeed * 0.7;
-      velocity = velocity * 0.6 + desiredVelocity * 0.4;
-      position += velocity * dt;
+      // Наша команда с мячом — возвращаемся в зону
+      final home = getHomePosition();
+      final toHome = home - position;
+      if (toHome.length > 5) {
+        final moveDir = toHome.normalized();
+        velocity = moveDir * maxSpeed * 0.5;
+        position += velocity * dt;
+      } else {
+        velocity = Vector2.zero();
+      }
     }
   }
 

@@ -35,31 +35,59 @@ class MatchGame extends FlameGame {
     ball = BallComponent(position: size / 2);
     add(ball);
 
-    // Игроки команды 0 (слева)
-    final playerA1 = PlayerComponent(number: 7, team: 0, position: Vector2(100, size.y / 2 - 50));
-    final playerA2 = PlayerComponent(number: 8, team: 0, position: Vector2(100, size.y / 2 + 50));
+    _createPlayers();
 
-    // Игроки команды 1 (справа)
-    final playerB1 = PlayerComponent(number: 9, team: 1, position: Vector2(size.x - 100, size.y / 2 - 50));
-    final playerB2 = PlayerComponent(number: 10, team: 1, position: Vector2(size.x - 100, size.y / 2 + 50));
+    // // Игроки команды 0 (слева)
+    // final playerA1 = PlayerComponent(number: 7, team: 0, position: Vector2(100, size.y / 2 - 50));
+    // final playerA2 = PlayerComponent(number: 8, team: 0, position: Vector2(100, size.y / 2 + 50));
+
+    // // Игроки команды 1 (справа)
+    // final playerB1 = PlayerComponent(number: 9, team: 1, position: Vector2(size.x - 100, size.y / 2 - 50));
+    // final playerB2 = PlayerComponent(number: 10, team: 1, position: Vector2(size.x - 100, size.y / 2 + 50));
 
     // Добавляем игроков и связываем с мячом
-    for (final p in [playerA1, playerA2, playerB1, playerB2]) {
+    for (final p in players) {
       p.assignBallRef(ball);
-      add(p);
-      players.add(p);
     }
 
     ball.assignPlayers(players);
 
     // Случайный выбор владельца мяча
-    final firstOwner = (Random().nextBool()) ? playerA1 : playerB1;
+    final firstOwner = players.first;
     ball.takeOwnership(firstOwner);
 
     // Поставить мяч чуть перед игроком
     final directionToCenter = (size / 2 - firstOwner.position).normalized();
     ball.position = firstOwner.position + directionToCenter * (firstOwner.radius + ball.radius + 1);
     ball.velocity = Vector2.zero();
+  }
+
+  void _createPlayers() {
+    players.clear();
+
+    // Команда 0
+    for (int i = 0; i < 6; i++) {
+      final role = (i < 2)
+          ? PlayerRole.defender
+          : (i < 4)
+          ? PlayerRole.midfielder
+          : PlayerRole.forward;
+      final player = PlayerComponent(number: i + 1, team: 0, role: role);
+      add(player);
+      players.add(player);
+    }
+
+    // Команда 1
+    for (int i = 0; i < 6; i++) {
+      final role = (i < 2)
+          ? PlayerRole.defender
+          : (i < 4)
+          ? PlayerRole.midfielder
+          : PlayerRole.forward;
+      final player = PlayerComponent(number: i + 7, team: 1, role: role);
+      add(player);
+      players.add(player);
+    }
   }
 
   @override
