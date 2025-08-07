@@ -8,24 +8,21 @@ import 'ball_component.dart';
 
 class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   final int id;
-  final int team;
+  final int team; // 0 или 1
   double radius = 14.0;
   double maxSpeed = 60.0;
   Vector2 velocity = Vector2.zero();
   BallComponent? ball;
 
-  Vector2? dribbleTarget;
-  double nextDribbleTargetTime = 0;
+  Vector2? targetPosition;
+  double nextTargetUpdateTime = 0;
 
-  PlayerComponent({required this.id, required this.team, Vector2? position})
-    : super(position: position ?? Vector2.zero(), size: Vector2.all(28));
+  PlayerComponent({required this.id, required this.team, required Vector2 position})
+    : super(position: position, size: Vector2.all(28));
 
   void assignBallRef(BallComponent b) => ball = b;
 
-  double distanceToBall() {
-    if (ball == null) return double.infinity;
-    return (ball!.position - position).length;
-  }
+  bool get hasBall => ball?.owner == this;
 
   @override
   void update(double dt) {
@@ -34,105 +31,116 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
     _applySeparation(dt);
 
-    final opponent = (ball!.owner != null && ball!.owner != this) ? ball!.owner : null;
+    final teammates = gameRef.players.where((p) => p.team == team && p != this).toList();
+    final opponents = gameRef.players.where((p) => p.team != team).toList();
 
-    if (ball!.owner == this) {
-      // === ДРИБЛИНГ ===
+    if (hasBall) {
+      // ==== Дриблинг ====
 
-      final goalX = (team == 0) ? gameRef.rightGoal.position.x : gameRef.leftGoal.position.x;
-      final goalY = gameRef.size.y / 2;
-      final goal = Vector2(goalX, goalY);
-
-      // Обновляем дрибблинг-цель каждые 1.5 сек или если дошли до неё
-      if (dribbleTarget == null ||
-          (position - dribbleTarget!).length < 20 ||
-          gameRef.elapsedTime > nextDribbleTargetTime) {
-        final offsetX = (Random().nextDouble() - 0.5) * 100;
-        final offsetY = (Random().nextDouble() - 0.5) * 100;
-        dribbleTarget = goal + Vector2(offsetX, offsetY);
-        nextDribbleTargetTime = gameRef.elapsedTime + 1.5;
+      // Периодически меняем цель дриблинга
+      if (targetPosition == null ||
+          (position - targetPosition!).length < 20 ||
+          gameRef.elapsedTime > nextTargetUpdateTime) {
+        final goalX = team == 0 ? gameRef.rightGoal.position.x : gameRef.leftGoal.position.x;
+        final goalY = gameRef.size.y / 2;
+        final offset = Vector2((Random().nextDouble() - 0.5) * 100, (Random().nextDouble() - 0.5) * 100);
+        targetPosition = Vector2(goalX, goalY) + offset;
+        nextTargetUpdateTime = gameRef.elapsedTime + 1.5;
       }
 
-      final moveDir = (dribbleTarget! - position).normalized();
-      velocity = moveDir * maxSpeed * 0.8;
+      // ПАС союзнику, если он свободен
+      for (final mate in teammates) {
+        if ((mate.position - position).length < 120 && (mate.position - position).angleTo(Vector2(1, 0)) < pi / 3) {
+          final defendersNear = opponents.where((o) => (o.position - mate.position).length < 40);
+          if (defendersNear.isEmpty) {
+            ball!.kickTowards(mate.position, 120, gameRef.elapsedTime, this);
+            return;
+          }
+        }
+      }
+
+      // Движение к цели
+      final dir = (targetPosition! - position).normalized();
+      velocity = dir * maxSpeed * 0.8;
       position += velocity * dt;
 
-      // Держим мяч у ноги
-      ball!.position = position + moveDir * (radius + ball!.radius + 1);
+      // Мяч у ноги
+      ball!.position = position + dir * (radius + ball!.radius + 1);
       ball!.velocity = Vector2.zero();
 
-      // Удар по воротам, если близко
-      if ((goal - position).length < 50 && ball!.canBeKickedBy(this, gameRef.elapsedTime)) {
-        ball!.kickTowards(goal, 120, gameRef.elapsedTime, this);
+      // Удар по воротам
+      final goalCenter = Vector2(
+        team == 0 ? gameRef.rightGoal.position.x : gameRef.leftGoal.position.x,
+        gameRef.size.y / 2,
+      );
+      if ((goalCenter - position).length < 50) {
+        ball!.kickTowards(goalCenter, 130, gameRef.elapsedTime, this);
       }
-    } else if (opponent != null) {
-      // === ПРЕССИНГ И ПОПЫТКА ОТБОРА ===
-
-      final toOpponent = opponent.position - position;
-
-      // Попытка отбора мяча
-      if ((position - ball!.position).length < radius * 1.6 &&
-          ball!.owner == opponent &&
-          ball!.canBeKickedBy(this, gameRef.elapsedTime)) {
+    } else if (ball!.owner?.team == team && ball!.owner != null) {
+      // === Поддержка владения: открываемся под пас ===
+      final owner = ball!.owner!;
+      final offset = Vector2((Random().nextDouble() - 0.5) * 60, (Random().nextDouble() - 0.5) * 60);
+      targetPosition = owner.position + offset;
+      _moveToTarget(dt);
+    } else if (ball!.owner?.team != team && ball!.owner != null) {
+      // === Прессинг ===
+      final toOpponent = ball!.owner!.position - position;
+      if (toOpponent.length < radius * 1.8) {
         ball!.takeOwnership(this);
-        ball!.lastKickTime = gameRef.elapsedTime;
-        dribbleTarget = null;
+        targetPosition = null;
       } else {
-        // Двигаемся к противнику с небольшим смещением, чтобы не врезаться лоб в лоб
-        final dodgeOffset = Vector2(-toOpponent.y, toOpponent.x).normalized() * 5.0;
-        final pressTarget = opponent.position + dodgeOffset;
-        velocity = (pressTarget - position).normalized() * maxSpeed;
+        velocity = toOpponent.normalized() * maxSpeed;
         position += velocity * dt;
       }
     } else {
-      // === БЕЖИМ К СВОБОДНОМУ МЯЧУ ===
-
+      // === Свободный мяч ===
       final dir = (ball!.position - position);
       if (dir.length > radius + ball!.radius) {
         velocity = dir.normalized() * maxSpeed;
         position += velocity * dt;
       } else {
-        // Берём мяч под контроль
         ball!.takeOwnership(this);
-        dribbleTarget = null;
+        targetPosition = null;
       }
     }
 
-    // Ограничиваем по полю
+    // Ограничение поля
     position.x = position.x.clamp(radius, gameRef.size.x - radius);
     position.y = position.y.clamp(radius, gameRef.size.y - radius);
   }
 
-  /// Раздвигает близко стоящих игроков, чтобы они не "сливались".
+  void _moveToTarget(double dt) {
+    if (targetPosition == null) return;
+    final dir = (targetPosition! - position);
+    if (dir.length > 5) {
+      velocity = dir.normalized() * maxSpeed * 0.7;
+      position += velocity * dt;
+    } else {
+      velocity = Vector2.zero();
+    }
+  }
+
   void _applySeparation(double dt) {
     final parent = this.parent;
     if (parent == null) return;
 
-    // минимальное расстояние между центрами (немного больше суммы радиусов)
     final double minSeparation = radius * 2.1;
 
     for (final c in parent.children) {
       if (c is PlayerComponent && c != this) {
-        final other = c;
-        final diff = position - other.position;
+        final diff = position - c.position;
         final dist = diff.length;
         if (dist < 1e-6) {
-          // если совсем совпали (на случай инициализации), немного рандомно сдвинуть
           final jitter = Vector2((Random().nextDouble() - 0.5) * 8, (Random().nextDouble() - 0.5) * 8);
           position += jitter;
-          other.position -= jitter;
+          c.position -= jitter;
           continue;
         }
         if (dist < minSeparation) {
-          // сколько нужно сдвинуть, чтобы достичь minSeparation
           final overlap = minSeparation - dist;
-          // сдвигаем половину на каждую сторону (чтобы не "толкать" только одного)
-          final correction = diff.normalized() * (overlap * 0.5 + 0.1);
-          // APPLY: сдвигаем плавно (чтобы не телепортировать)
-          // коэффициент можно подбирать: здесь небольшая плавность
-          final smoothFactor = 1.0; // 1.0 — мгновенно, <1 — плавнее
-          position += correction * smoothFactor;
-          other.position -= correction * smoothFactor;
+          final correction = diff.normalized() * (overlap * 0.5);
+          position += correction;
+          c.position -= correction;
         }
       }
     }
@@ -140,18 +148,15 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
   @override
   void render(Canvas canvas) {
-    // рисуем тень
     final shadowPaint = Paint()..color = Colors.black.withOpacity(0.25);
     canvas.drawCircle(Offset(2, 3), radius * 0.95, shadowPaint);
 
-    // рисуем обводку (чёрный контур), затем заливку — чтобы было видно при перекрытии
     final outlinePaint = Paint()..color = Colors.black;
     canvas.drawCircle(Offset.zero, radius + 2.0, outlinePaint);
 
     final fillPaint = Paint()..color = (team == 0 ? Colors.blue : Colors.yellow);
     canvas.drawCircle(Offset.zero, radius, fillPaint);
 
-    // номер — рисуем чуть выше центра и с белым фоном для читаемости
     final tp = TextPainter(
       text: TextSpan(
         text: id.toString(),
@@ -161,7 +166,6 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     );
     tp.layout();
 
-    // фон для номера (полупрозрачная чёрная полоска)
     final rectW = tp.width + 8;
     final rectH = tp.height + 4;
     final rectOffset = Offset(-rectW / 2, -radius - rectH - 2);

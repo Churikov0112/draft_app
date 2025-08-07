@@ -1,76 +1,61 @@
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
-import '../match_game.dart';
 import 'player_component.dart';
 
-class BallComponent extends PositionComponent with HasGameRef<MatchGame> {
+class BallComponent extends PositionComponent {
+  final double radius = 6.0;
   Vector2 velocity = Vector2.zero();
-  double radius = 6.0;
-  PlayerComponent? playerA;
-  PlayerComponent? playerB;
-
-  BallComponent({Vector2? position}) : super(position: position ?? Vector2.zero(), size: Vector2.all(12));
-
   PlayerComponent? owner;
-  double lastKickTime = 0; // время последнего удара
-  final double kickCooldown = 0.5; // сек
+  double lastKickTime = 0;
+
+  BallComponent({required Vector2 position}) : super(position: position, size: Vector2.all(12));
+
+  List<PlayerComponent> allPlayers = [];
+
+  void assignPlayers(List<PlayerComponent> players) {
+    allPlayers = players;
+  }
+
+  void kickTowards(Vector2 target, double power, double currentTime, PlayerComponent kicker) {
+    final dir = (target - position).normalized();
+    velocity = dir * power;
+    owner = null;
+    lastKickTime = currentTime;
+  }
 
   void takeOwnership(PlayerComponent player) {
+    if (owner == player) return;
     owner = player;
-    velocity = Vector2.zero();
   }
 
-  bool canBeKickedBy(PlayerComponent player, double gameTime) {
-    // Если это попытка пнуть мяч — проверяем cooldown
-    if (gameTime - lastKickTime < kickCooldown) return false;
-
-    return true;
-  }
-
-  void kickTowards(Vector2 point, double force, double gameTime, PlayerComponent kicker) {
-    final dir = (point - position).normalized();
-    velocity = dir * force;
-    owner = null;
-    lastKickTime = gameTime;
-  }
-
-  void assignPlayers(PlayerComponent a, PlayerComponent b) {
-    playerA = a;
-    playerB = b;
+  bool canBeKickedBy(PlayerComponent player, double currentTime) {
+    return owner == null || (owner != player && (currentTime - lastKickTime) > 0.5);
   }
 
   @override
   void update(double dt) {
     super.update(dt);
-    position += velocity * dt;
 
-    // трение
-    velocity *= 0.98;
-    if (velocity.length2 < 0.01) velocity.setZero();
+    if (owner == null) {
+      position += velocity * dt;
+      velocity *= 0.96; // трение
 
-    // отскок от краёв экрана
-    if (position.x - radius < 0) {
-      position.x = radius;
-      velocity.x *= -1;
-    }
-    if (position.x + radius > gameRef.size.x) {
-      position.x = gameRef.size.x - radius;
-      velocity.x *= -1;
-    }
-    if (position.y - radius < 0) {
-      position.y = radius;
-      velocity.y *= -1;
-    }
-    if (position.y + radius > gameRef.size.y) {
-      position.y = gameRef.size.y - radius;
-      velocity.y *= -1;
+      if (velocity.length < 1) {
+        velocity = Vector2.zero();
+      }
     }
   }
 
   @override
   void render(Canvas canvas) {
-    final paint = Paint()..color = Colors.white;
-    canvas.drawCircle(Offset.zero, radius, paint);
+    final shadowPaint = Paint()..color = Colors.black.withOpacity(0.2);
+    canvas.drawCircle(Offset(2, 3), radius * 0.95, shadowPaint);
+
+    final ballPaint = Paint()..color = Colors.white;
+    canvas.drawCircle(Offset.zero, radius, ballPaint);
+
+    final stripePaint = Paint()..color = Colors.black;
+    canvas.drawLine(Offset(-radius + 2, 0), Offset(radius - 2, 0), stripePaint);
   }
 }
