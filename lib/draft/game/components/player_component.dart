@@ -55,7 +55,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
       final teammate = _findOpenTeammate();
       if (teammate != null) {
         final target = teammate.position + (teammate.velocity * 0.3);
-        ball!.kickTowards(target, 1500, time, this);
+        ball!.kickTowards(target, 500, time, this);
         print("player $number passed ${teammate.number}");
         _lastPassTime = time;
 
@@ -75,10 +75,11 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     // Удар по воротам при приближении
     if ((goalPos - position).length < 200) {
       ball!.kickTowards(goalPos, 1000, time, this);
+      print("player $number kicks target");
     } else {
       // Удерживаем мяч рядом
       ball!.position = position + dir * (radius + ball!.radius + 1);
-      ball!.velocity = Vector2.zero();
+      // ball!.velocity = Vector2.zero();
     }
   }
 
