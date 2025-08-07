@@ -49,37 +49,52 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   }
 
   void _handleBallPossession({required double time, required double dt}) {
-    // Пытаемся сделать пас
+    final goal = (team == 0) ? gameRef.rightGoal : gameRef.leftGoal;
+    final goalPos = goal.position;
+    final dirToGoal = (goalPos - position).normalized();
+
+    // Проверка на врагов на пути
+    final enemies = gameRef.players.where((p) => p.team != team);
+    final threatDetected = enemies.any((enemy) {
+      final toEnemy = enemy.position - position;
+      final projection = toEnemy.dot(dirToGoal);
+      final perpendicularDist = (toEnemy - dirToGoal * projection).length;
+      return projection > 0 && projection < 150 && perpendicularDist < 25;
+    });
+
     final canPass = (time - _lastPassTime) > passCooldown;
-    if (canPass) {
+
+    if (threatDetected && canPass) {
       final teammate = _findOpenTeammate();
       if (teammate != null) {
+        final toTeammate = teammate.position - position;
         final target = teammate.position + (teammate.velocity * 0.3);
-        ball!.kickTowards(target, 500, time, this);
-        print("player $number passed ${teammate.number}");
-        _lastPassTime = time;
 
-        // Убрали return, чтобы игрок продолжал двигаться!
+        final dist = toTeammate.length;
+
+        // Рассчитываем силу паса в зависимости от расстояния
+        // Можно варьировать коэффициенты при необходимости
+        final passPower = dist * 3.0; // Пример: 100px -> сила 300
+
+        ball!.kickTowards(target, passPower.clamp(200, 800), time, this);
+        print("player $number passed under pressure to ${teammate.number} with power ${passPower.toStringAsFixed(1)}");
+        _lastPassTime = time;
       }
     }
 
     // Движение к воротам
-    final goal = (team == 0) ? gameRef.rightGoal : gameRef.leftGoal;
-    final goalPos = goal.position;
     final angleNoise = (Random().nextDouble() - 0.5) * 0.3;
-    final dir = (goalPos - position).normalized().rotated(angleNoise);
+    final dir = dirToGoal.rotated(angleNoise);
 
     velocity = dir * maxSpeed * 0.9;
     position += velocity * dt;
 
-    // Удар по воротам при приближении
     if ((goalPos - position).length < 200) {
       ball!.kickTowards(goalPos, 1000, time, this);
-      print("player $number kicks target");
+      print("player $number shoots at goal!");
     } else {
       // Удерживаем мяч рядом
       ball!.position = position + dir * (radius + ball!.radius + 1);
-      // ball!.velocity = Vector2.zero();
     }
   }
 
