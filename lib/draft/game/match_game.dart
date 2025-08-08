@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'components/ball_component.dart';
 import 'components/goal_component.dart';
 import 'components/player_component.dart';
+import 'components/score_component.dart';
 
 class MatchGame extends FlameGame {
   late BallComponent ball;
@@ -40,6 +41,7 @@ class MatchGame extends FlameGame {
 
     // Установите камеру для следования за мячом
     camera.smoothFollow(ball, stiffness: 0.5);
+    camera.viewport.add(ScoreComponent(getScore: () => 'Blue $team0score : $team1score Yellow'));
 
     return super.onLoad();
   }
@@ -69,134 +71,134 @@ class MatchGame extends FlameGame {
   void _createTeams() {
     players.addAll([
       PlayerComponent(
-        team: 1,
+        team: 0,
         number: 1,
         role: PlayerRole.defender,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 1,
+        team: 0,
         number: 3,
         role: PlayerRole.defender,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 1,
+        team: 0,
         number: 5,
         role: PlayerRole.midfielder,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 1,
+        team: 0,
         number: 7,
         role: PlayerRole.midfielder,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 1,
+        team: 0,
         number: 10,
         role: PlayerRole.forward,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 1,
+        team: 0,
         number: 2,
         role: PlayerRole.defender,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 1,
+        team: 0,
         number: 4,
         role: PlayerRole.defender,
         stats: PlayerStats(maxSpeed: 65, lowPass: 65, shoots: 70, defence: 77, dribbling: 65),
       ),
       PlayerComponent(
-        team: 1,
+        team: 0,
         number: 6,
         role: PlayerRole.midfielder,
         stats: PlayerStats(maxSpeed: 80, lowPass: 85, shoots: 75, defence: 75, dribbling: 75),
       ),
       PlayerComponent(
-        team: 1,
+        team: 0,
         number: 8,
         role: PlayerRole.midfielder,
         stats: PlayerStats(maxSpeed: 80, lowPass: 90, shoots: 85, defence: 60, dribbling: 85),
       ),
       PlayerComponent(
-        team: 1,
+        team: 0,
         number: 9,
         role: PlayerRole.forward,
         stats: PlayerStats(maxSpeed: 92, lowPass: 70, shoots: 95, defence: 50, dribbling: 90),
       ),
       PlayerComponent(
-        team: 1,
+        team: 0,
         number: 11,
         role: PlayerRole.forward,
         stats: PlayerStats(maxSpeed: 100, lowPass: 100, shoots: 100, defence: 100, dribbling: 100),
       ),
       // ! -----------------------------------------------------------------
       PlayerComponent(
-        team: 0,
+        team: 1,
         number: 1,
         role: PlayerRole.defender,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 0,
+        team: 1,
         number: 3,
         role: PlayerRole.defender,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 0,
+        team: 1,
         number: 5,
         role: PlayerRole.midfielder,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 0,
+        team: 1,
         number: 7,
         role: PlayerRole.midfielder,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 0,
+        team: 1,
         number: 10,
         role: PlayerRole.forward,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 0,
+        team: 1,
         number: 2,
         role: PlayerRole.defender,
         stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
       ),
       PlayerComponent(
-        team: 0,
+        team: 1,
         number: 4,
         role: PlayerRole.defender,
         stats: PlayerStats(maxSpeed: 65, lowPass: 65, shoots: 70, defence: 77, dribbling: 65),
       ),
       PlayerComponent(
-        team: 0,
+        team: 1,
         number: 6,
         role: PlayerRole.midfielder,
         stats: PlayerStats(maxSpeed: 80, lowPass: 85, shoots: 75, defence: 75, dribbling: 75),
       ),
       PlayerComponent(
-        team: 0,
+        team: 1,
         number: 8,
         role: PlayerRole.midfielder,
         stats: PlayerStats(maxSpeed: 80, lowPass: 90, shoots: 85, defence: 60, dribbling: 85),
       ),
       PlayerComponent(
-        team: 0,
+        team: 1,
         number: 9,
         role: PlayerRole.forward,
         stats: PlayerStats(maxSpeed: 92, lowPass: 70, shoots: 95, defence: 50, dribbling: 90),
       ),
       PlayerComponent(
-        team: 0,
+        team: 1,
         number: 11,
         role: PlayerRole.forward,
         stats: PlayerStats(maxSpeed: 100, lowPass: 100, shoots: 100, defence: 100, dribbling: 100),

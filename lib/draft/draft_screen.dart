@@ -12,8 +12,6 @@ class MatchScreen extends StatefulWidget {
 class _MatchScreenState extends State<MatchScreen> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(child: GameWidget.controlled(gameFactory: MatchGame.new)),
-    );
+    return Scaffold(body: GameWidget.controlled(gameFactory: MatchGame.new));
   }
 }
