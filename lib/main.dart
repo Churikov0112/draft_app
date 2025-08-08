@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'draft/draft_screen.dart';
 
-void main() {
+Future<void> main() async {
   runApp(const MyApp());
+
+  // await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]).then((value) => runApp(const MyApp()));
 }
 
 class MyApp extends StatelessWidget {
