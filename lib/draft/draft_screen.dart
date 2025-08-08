@@ -10,24 +10,10 @@ class MatchScreen extends StatefulWidget {
 }
 
 class _MatchScreenState extends State<MatchScreen> {
-  late final MatchGame _game;
-
-  @override
-  void initState() {
-    super.initState();
-    _game = MatchGame();
-  }
-
-  @override
-  void dispose() {
-    _game.onDetach(); // if you add cleanup
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(child: GameWidget(game: _game)),
+      body: SafeArea(child: GameWidget.controlled(gameFactory: MatchGame.new)),
     );
   }
 }

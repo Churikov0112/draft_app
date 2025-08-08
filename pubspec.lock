@@ -65,6 +65,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.30.1"
+  flame_camera_tools:
+    dependency: "direct main"
+    description:
+      name: flame_camera_tools
+      sha256: "68e7ac1e5c1ae0043e9eca2d04a1d1741909a3c250ec88f03de783ece0e7c5aa"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.0.1"
   flutter:
     dependency: "direct main"
     description: flutter

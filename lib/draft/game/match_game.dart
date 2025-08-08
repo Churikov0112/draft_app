@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flame/components.dart';
 import 'package:flame/extensions.dart';
 import 'package:flame/game.dart';
+import 'package:flame_camera_tools/flame_camera_tools.dart';
 import 'package:flutter/material.dart';
 
 import 'components/ball_component.dart';
@@ -21,29 +22,41 @@ class MatchGame extends FlameGame {
 
   double elapsedTime = 0;
 
+  final fieldSize = Vector2(1000, 600); // Настоящее поле
+
   Vector2 getGoalPositionForTeam(int team) => team == 0 ? rightGoal.position : leftGoal.position;
+
+  // Переопределим size getter для компонента
+  @override
+  Vector2 get size => fieldSize;
 
   @override
   Future<void> onLoad() async {
     _setupField();
     _setupGoals();
+
     _setupBall();
     _setupPlayers();
+
+    // Установите камеру для следования за мячом
+    camera.smoothFollow(ball, stiffness: 0.5);
+
+    return super.onLoad();
   }
 
   void _setupField() {
-    add(RectangleComponent(size: size, paint: Paint()..color = const Color(0xFF1E8B3A)));
+    world.add(RectangleComponent(size: fieldSize, paint: Paint()..color = const Color(0xFF1E8B3A)));
   }
 
   void _setupGoals() {
-    leftGoal = GoalComponent(team: 0, position: Vector2(0, size.y / 2 - 30));
+    leftGoal = GoalComponent(team: 1, position: Vector2(0, size.y / 2 - 30));
     rightGoal = GoalComponent(team: 1, position: Vector2(size.x - 10, size.y / 2 - 30));
-    addAll([leftGoal, rightGoal]);
+    world.addAll([leftGoal, rightGoal]);
   }
 
-  void _setupBall() {
+  _setupBall() {
     ball = BallComponent(position: size / 2);
-    add(ball);
+    world.add(ball); // <-- теперь дождёмся загрузки
   }
 
   void _setupPlayers() {
@@ -55,7 +68,103 @@ class MatchGame extends FlameGame {
 
   void _createTeams() {
     players.addAll([
-      // Team 0
+      PlayerComponent(
+        team: 1,
+        number: 1,
+        role: PlayerRole.defender,
+        stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
+      ),
+      PlayerComponent(
+        team: 1,
+        number: 3,
+        role: PlayerRole.defender,
+        stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
+      ),
+      PlayerComponent(
+        team: 1,
+        number: 5,
+        role: PlayerRole.midfielder,
+        stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
+      ),
+      PlayerComponent(
+        team: 1,
+        number: 7,
+        role: PlayerRole.midfielder,
+        stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
+      ),
+      PlayerComponent(
+        team: 1,
+        number: 10,
+        role: PlayerRole.forward,
+        stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
+      ),
+      PlayerComponent(
+        team: 1,
+        number: 2,
+        role: PlayerRole.defender,
+        stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
+      ),
+      PlayerComponent(
+        team: 1,
+        number: 4,
+        role: PlayerRole.defender,
+        stats: PlayerStats(maxSpeed: 65, lowPass: 65, shoots: 70, defence: 77, dribbling: 65),
+      ),
+      PlayerComponent(
+        team: 1,
+        number: 6,
+        role: PlayerRole.midfielder,
+        stats: PlayerStats(maxSpeed: 80, lowPass: 85, shoots: 75, defence: 75, dribbling: 75),
+      ),
+      PlayerComponent(
+        team: 1,
+        number: 8,
+        role: PlayerRole.midfielder,
+        stats: PlayerStats(maxSpeed: 80, lowPass: 90, shoots: 85, defence: 60, dribbling: 85),
+      ),
+      PlayerComponent(
+        team: 1,
+        number: 9,
+        role: PlayerRole.forward,
+        stats: PlayerStats(maxSpeed: 92, lowPass: 70, shoots: 95, defence: 50, dribbling: 90),
+      ),
+      PlayerComponent(
+        team: 1,
+        number: 11,
+        role: PlayerRole.forward,
+        stats: PlayerStats(maxSpeed: 100, lowPass: 100, shoots: 100, defence: 100, dribbling: 100),
+      ),
+      // ! -----------------------------------------------------------------
+      PlayerComponent(
+        team: 0,
+        number: 1,
+        role: PlayerRole.defender,
+        stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
+      ),
+      PlayerComponent(
+        team: 0,
+        number: 3,
+        role: PlayerRole.defender,
+        stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
+      ),
+      PlayerComponent(
+        team: 0,
+        number: 5,
+        role: PlayerRole.midfielder,
+        stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
+      ),
+      PlayerComponent(
+        team: 0,
+        number: 7,
+        role: PlayerRole.midfielder,
+        stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
+      ),
+      PlayerComponent(
+        team: 0,
+        number: 10,
+        role: PlayerRole.forward,
+        stats: PlayerStats(maxSpeed: 60, lowPass: 70, shoots: 60, defence: 90, dribbling: 65),
+      ),
       PlayerComponent(
         team: 0,
         number: 2,
@@ -92,46 +201,9 @@ class MatchGame extends FlameGame {
         role: PlayerRole.forward,
         stats: PlayerStats(maxSpeed: 100, lowPass: 100, shoots: 100, defence: 100, dribbling: 100),
       ),
-      // ! -----------------------------------------------------------------
-      PlayerComponent(
-        team: 1,
-        number: 2,
-        role: PlayerRole.defender,
-        stats: PlayerStats(maxSpeed: 60, lowPass: 65, shoots: 60, defence: 90, dribbling: 65),
-      ),
-      PlayerComponent(
-        team: 1,
-        number: 4,
-        role: PlayerRole.defender,
-        stats: PlayerStats(maxSpeed: 65, lowPass: 65, shoots: 65, defence: 80, dribbling: 65),
-      ),
-      PlayerComponent(
-        team: 1,
-        number: 6,
-        role: PlayerRole.midfielder,
-        stats: PlayerStats(maxSpeed: 75, lowPass: 85, shoots: 80, defence: 70, dribbling: 80),
-      ),
-      PlayerComponent(
-        team: 1,
-        number: 8,
-        role: PlayerRole.midfielder,
-        stats: PlayerStats(maxSpeed: 80, lowPass: 90, shoots: 90, defence: 60, dribbling: 80),
-      ),
-      PlayerComponent(
-        team: 1,
-        number: 9,
-        role: PlayerRole.forward,
-        stats: PlayerStats(maxSpeed: 88, lowPass: 70, shoots: 95, defence: 50, dribbling: 80),
-      ),
-      PlayerComponent(
-        team: 1,
-        number: 11,
-        role: PlayerRole.forward,
-        stats: PlayerStats(maxSpeed: 98, lowPass: 65, shoots: 80, defence: 58, dribbling: 80),
-      ),
     ]);
 
-    addAll(players);
+    world.addAll(players);
   }
 
   void _positionTeams() {
@@ -143,9 +215,9 @@ class MatchGame extends FlameGame {
   }
 
   void _positionTeam(List<PlayerComponent> team, double xPos) {
-    const spacingY = 80.0;
+    final spacingY = fieldSize.y / (team.length + 1);
     for (int i = 0; i < team.length; i++) {
-      team[i].position = Vector2(xPos, size.y / 2 + (i - 0.5) * spacingY);
+      team[i].position = Vector2(xPos, spacingY * (i + 1));
     }
   }
 

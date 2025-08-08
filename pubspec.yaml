@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flame: ^1.30.1
   collection: ^1.19.1
+  flame_camera_tools: ^4.0.1
 
 dev_dependencies:
   flutter_test:
