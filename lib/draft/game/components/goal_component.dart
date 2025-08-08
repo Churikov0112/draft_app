@@ -6,7 +6,7 @@ class GoalComponent extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    final paint = Paint()..color = Colors.redAccent;
+    final paint = Paint()..color = Colors.grey;
     final textPainter = TextPainter(
       text: TextSpan(
         style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
