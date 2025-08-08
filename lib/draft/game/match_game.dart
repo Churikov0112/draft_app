@@ -107,47 +107,127 @@ class MatchGame extends FlameGame {
       name: "A",
       color: Colors.red,
       startingPlayers: [
-        for (int i = 0; i < 11; i++)
-          PlayerInTeamModel(
-            teamId: aId,
-            number: i + 1,
-            role: i < 4
-                ? PlayerRole.defender
-                : i < 8
-                ? PlayerRole.midfielder
-                : PlayerRole.forward,
-            data: PlayerModel(
-              id: "$aId-$i",
-              name: "$aId-$i-name",
-              stats: PlayerStats(
-                maxSpeed: i < 4
-                    ? 60
-                    : i < 8
-                    ? 80
-                    : 100,
-                lowPass: i < 4
-                    ? 60
-                    : i < 8
-                    ? 100
-                    : 80,
-                shoots: i < 4
-                    ? 60
-                    : i < 8
-                    ? 80
-                    : 80,
-                defence: i < 4
-                    ? 100
-                    : i < 8
-                    ? 80
-                    : 60,
-                dribbling: i < 4
-                    ? 60
-                    : i < 8
-                    ? 80
-                    : 100,
-              ),
-            ),
+        PlayerInTeamModel(
+          teamId: aId,
+          number: 1,
+          position: PlayerPosition.gk,
+          data: PlayerModel(
+            id: "$aId-1",
+            name: "1",
+            usualPosition: PlayerPosition.gk,
+            stats: PlayerStats(maxSpeed: 60, lowPass: 60, shoots: 60, defence: 60, dribbling: 60, goalkeeper: 100),
           ),
+        ),
+        PlayerInTeamModel(
+          teamId: aId,
+          number: 2,
+          position: PlayerPosition.cb,
+          data: PlayerModel(
+            id: "$aId-2",
+            name: "2",
+            usualPosition: PlayerPosition.cb,
+            stats: PlayerStats(maxSpeed: 70, lowPass: 70, shoots: 70, defence: 85, dribbling: 65, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: aId,
+          number: 3,
+          position: PlayerPosition.cb,
+          data: PlayerModel(
+            id: "$aId-3",
+            name: "3",
+            usualPosition: PlayerPosition.cb,
+            stats: PlayerStats(maxSpeed: 70, lowPass: 70, shoots: 70, defence: 85, dribbling: 65, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: aId,
+          number: 4,
+          position: PlayerPosition.rb,
+          data: PlayerModel(
+            id: "$aId-4",
+            name: "4",
+            usualPosition: PlayerPosition.rb,
+            stats: PlayerStats(maxSpeed: 80, lowPass: 70, shoots: 70, defence: 75, dribbling: 80, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: aId,
+          number: 5,
+          position: PlayerPosition.lb,
+          data: PlayerModel(
+            id: "$aId-5",
+            name: "5",
+            usualPosition: PlayerPosition.lb,
+            stats: PlayerStats(maxSpeed: 80, lowPass: 70, shoots: 70, defence: 75, dribbling: 80, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: aId,
+          number: 6,
+          position: PlayerPosition.dm,
+          data: PlayerModel(
+            id: "$aId-6",
+            name: "6",
+            usualPosition: PlayerPosition.dm,
+            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 70, defence: 80, dribbling: 70, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: aId,
+          number: 7,
+          position: PlayerPosition.cm,
+          data: PlayerModel(
+            id: "$aId-7",
+            name: "7",
+            usualPosition: PlayerPosition.cm,
+            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 75, defence: 75, dribbling: 75, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: aId,
+          number: 8,
+          position: PlayerPosition.cm,
+          data: PlayerModel(
+            id: "$aId-8",
+            name: "8",
+            usualPosition: PlayerPosition.cm,
+            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 75, defence: 75, dribbling: 75, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: aId,
+          number: 9,
+          position: PlayerPosition.rw,
+          data: PlayerModel(
+            id: "$aId-9",
+            name: "9",
+            usualPosition: PlayerPosition.rw,
+            stats: PlayerStats(maxSpeed: 90, lowPass: 75, shoots: 80, defence: 60, dribbling: 85, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: aId,
+          number: 10,
+          position: PlayerPosition.lw,
+          data: PlayerModel(
+            id: "$aId-10",
+            name: "10",
+            usualPosition: PlayerPosition.lw,
+            stats: PlayerStats(maxSpeed: 90, lowPass: 75, shoots: 80, defence: 60, dribbling: 85, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: aId,
+          number: 11,
+          position: PlayerPosition.st,
+          data: PlayerModel(
+            id: "$aId-11",
+            name: "11",
+            usualPosition: PlayerPosition.st,
+            stats: PlayerStats(maxSpeed: 95, lowPass: 75, shoots: 85, defence: 60, dribbling: 80, goalkeeper: 40),
+          ),
+        ),
       ],
     );
 
@@ -156,47 +236,127 @@ class MatchGame extends FlameGame {
       name: "B",
       color: Colors.blue,
       startingPlayers: [
-        for (int i = 0; i < 11; i++)
-          PlayerInTeamModel(
-            teamId: bId,
-            number: i + 1,
-            role: i < 4
-                ? PlayerRole.defender
-                : i < 8
-                ? PlayerRole.midfielder
-                : PlayerRole.forward,
-            data: PlayerModel(
-              id: "$bId-$i",
-              name: "$bId-$i-name",
-              stats: PlayerStats(
-                maxSpeed: i < 4
-                    ? 60
-                    : i < 8
-                    ? 80
-                    : 100,
-                lowPass: i < 4
-                    ? 60
-                    : i < 8
-                    ? 100
-                    : 80,
-                shoots: i < 4
-                    ? 60
-                    : i < 8
-                    ? 80
-                    : 80,
-                defence: i < 4
-                    ? 100
-                    : i < 8
-                    ? 80
-                    : 60,
-                dribbling: i < 4
-                    ? 60
-                    : i < 8
-                    ? 80
-                    : 100,
-              ),
-            ),
+        PlayerInTeamModel(
+          teamId: bId,
+          number: 1,
+          position: PlayerPosition.gk,
+          data: PlayerModel(
+            id: "$bId-1",
+            name: "1",
+            usualPosition: PlayerPosition.gk,
+            stats: PlayerStats(maxSpeed: 60, lowPass: 60, shoots: 60, defence: 60, dribbling: 60, goalkeeper: 100),
           ),
+        ),
+        PlayerInTeamModel(
+          teamId: bId,
+          number: 2,
+          position: PlayerPosition.cb,
+          data: PlayerModel(
+            id: "$bId-2",
+            name: "2",
+            usualPosition: PlayerPosition.cb,
+            stats: PlayerStats(maxSpeed: 70, lowPass: 70, shoots: 70, defence: 85, dribbling: 65, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: bId,
+          number: 3,
+          position: PlayerPosition.cb,
+          data: PlayerModel(
+            id: "$bId-3",
+            name: "3",
+            usualPosition: PlayerPosition.cb,
+            stats: PlayerStats(maxSpeed: 70, lowPass: 70, shoots: 70, defence: 85, dribbling: 65, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: bId,
+          number: 4,
+          position: PlayerPosition.rb,
+          data: PlayerModel(
+            id: "$bId-4",
+            name: "4",
+            usualPosition: PlayerPosition.rb,
+            stats: PlayerStats(maxSpeed: 80, lowPass: 70, shoots: 70, defence: 75, dribbling: 80, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: bId,
+          number: 5,
+          position: PlayerPosition.lb,
+          data: PlayerModel(
+            id: "$bId-5",
+            name: "5",
+            usualPosition: PlayerPosition.lb,
+            stats: PlayerStats(maxSpeed: 80, lowPass: 70, shoots: 70, defence: 75, dribbling: 80, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: bId,
+          number: 6,
+          position: PlayerPosition.dm,
+          data: PlayerModel(
+            id: "$bId-6",
+            name: "6",
+            usualPosition: PlayerPosition.dm,
+            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 70, defence: 80, dribbling: 70, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: bId,
+          number: 7,
+          position: PlayerPosition.cm,
+          data: PlayerModel(
+            id: "$bId-7",
+            name: "7",
+            usualPosition: PlayerPosition.cm,
+            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 75, defence: 75, dribbling: 75, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: bId,
+          number: 8,
+          position: PlayerPosition.cm,
+          data: PlayerModel(
+            id: "$bId-8",
+            name: "8",
+            usualPosition: PlayerPosition.cm,
+            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 75, defence: 75, dribbling: 75, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: bId,
+          number: 9,
+          position: PlayerPosition.rw,
+          data: PlayerModel(
+            id: "$bId-9",
+            name: "9",
+            usualPosition: PlayerPosition.rw,
+            stats: PlayerStats(maxSpeed: 90, lowPass: 75, shoots: 80, defence: 60, dribbling: 85, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: bId,
+          number: 10,
+          position: PlayerPosition.lw,
+          data: PlayerModel(
+            id: "$bId-10",
+            name: "10",
+            usualPosition: PlayerPosition.lw,
+            stats: PlayerStats(maxSpeed: 90, lowPass: 75, shoots: 80, defence: 60, dribbling: 85, goalkeeper: 40),
+          ),
+        ),
+        PlayerInTeamModel(
+          teamId: bId,
+          number: 11,
+          position: PlayerPosition.st,
+          data: PlayerModel(
+            id: "$bId-11",
+            name: "11",
+            usualPosition: PlayerPosition.st,
+            stats: PlayerStats(maxSpeed: 95, lowPass: 75, shoots: 85, defence: 60, dribbling: 80, goalkeeper: 40),
+          ),
+        ),
       ],
     );
 
