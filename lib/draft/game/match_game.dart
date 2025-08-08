@@ -104,7 +104,7 @@ class MatchGame extends FlameGame {
 
     teamA = TeamModel(
       id: aId,
-      name: "A",
+      name: "Red",
       color: Colors.red,
       startingPlayers: [
         PlayerInTeamModel(
@@ -233,7 +233,7 @@ class MatchGame extends FlameGame {
 
     teamB = TeamModel(
       id: bId,
-      name: "B",
+      name: "Blue",
       color: Colors.blue,
       startingPlayers: [
         PlayerInTeamModel(

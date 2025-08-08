@@ -10,21 +10,16 @@ import 'goal_component.dart';
 
 final Map<PlayerPosition, Offset> basePositions = {
   PlayerPosition.gk: Offset(0.05, 0.5),
-
   PlayerPosition.cb: Offset(0.25, 0.5),
   PlayerPosition.rb: Offset(0.25, 0.8),
   PlayerPosition.lb: Offset(0.25, 0.2),
-
   PlayerPosition.dm: Offset(0.35, 0.5),
   PlayerPosition.cm: Offset(0.45, 0.5),
   PlayerPosition.am: Offset(0.55, 0.5),
-
   PlayerPosition.lm: Offset(0.45, 0.2),
   PlayerPosition.rm: Offset(0.45, 0.8),
-
   PlayerPosition.lw: Offset(0.65, 0.2),
   PlayerPosition.rw: Offset(0.65, 0.8),
-
   PlayerPosition.cf: Offset(0.75, 0.5),
   PlayerPosition.ss: Offset(0.75, 0.45),
   PlayerPosition.st: Offset(0.75, 0.55),
@@ -34,7 +29,7 @@ final Map<PlayerPosition, Offset> basePositions = {
 class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   // Константы
   static const double playerRadius = 14.0; // Радиус игрока
-  static const double stealCooldown = 1.0; // Время между попытками отбора
+  static const double stealCooldown = 2.0; // Время между попытками отбора
   static const double passCooldown = 2.0; // Время между передачами
 
   final PlayerInTeamModel pit;
@@ -49,8 +44,15 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
   double _dt = 0;
 
+  // Добавлены переменные для периодического обновления позиции
+  Vector2 desiredPosition = Vector2.zero();
+  double positionUpdateTimer = 0.0;
+  double positionUpdateInterval = 3.0; // Обновление каждые 3-5 секунд
+
   PlayerComponent({required this.pit, Vector2? position})
-    : super(position: position ?? Vector2.zero(), size: Vector2.all(28));
+    : super(position: position ?? Vector2.zero(), size: Vector2.all(28)) {
+    desiredPosition = Vector2.zero(); // Инициализация желаемой позиции
+  }
 
   /// Установка ссылки на мяч
   void assignBallRef(BallComponent b) => ball = b;
@@ -67,8 +69,26 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
     if (ball == null) return;
 
+    // Обновление таймера для желаемой позиции
+    positionUpdateTimer -= dt;
+    if (positionUpdateTimer <= 0) {
+      _updateDesiredPosition();
+      positionUpdateTimer = positionUpdateInterval + gameRef.random.nextDouble() * 2.0; // 3-5 секунд
+    }
+
     _handleBallInteraction();
     _clampPosition();
+  }
+
+  /// Обновление желаемой позиции
+  void _updateDesiredPosition() {
+    final attacking = _isAttackingTeam();
+    final ballPos = ball?.position ?? Vector2.zero();
+    final basePos = getHomePosition();
+    final attackShift = _calculateTacticalShift(ballPos, attacking);
+    final randomShift = _calculateRandomPositionShift(attacking);
+    desiredPosition = basePos + attackShift + randomShift;
+    desiredPosition = _avoidNearbyOpponents(desiredPosition);
   }
 
   /// Основная логика взаимодействия с мячом
@@ -90,8 +110,8 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   /// Определение зоны поля
   String _getFieldZone(Vector2 position, Vector2 goalPos, double fieldLength) {
     final distToGoal = (goalPos - position).length;
-    final attackingZoneThreshold = fieldLength * 0.3; // Ближе 30% к воротам соперника
-    final defensiveZoneThreshold = fieldLength * 0.7; // Дальше 70% от ворот соперника
+    final attackingZoneThreshold = fieldLength * 0.3;
+    final defensiveZoneThreshold = fieldLength * 0.7;
 
     if (distToGoal < attackingZoneThreshold) {
       return 'attacking';
@@ -110,12 +130,10 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final distToGoal = (goalPos - position).length;
     final fieldZone = _getFieldZone(position, goalPos, gameRef.size.x);
 
-    // Рассчитываем баллы для каждого действия
     final passScore = _calculatePassScore(time, goal, fieldZone);
     final dribbleScore = _calculateDribbleScore(goal, fieldZone);
     final shootScore = _calculateShootScore(distToGoal, fieldZone);
 
-    // Выбираем действие с наивысшим баллом
     final bestAction = _selectBestAction(passScore, dribbleScore, shootScore);
 
     if (bestAction == 'pass' && !_randomSkipPassDecision()) {
@@ -129,69 +147,62 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
       return;
     }
 
-    // По умолчанию дриблинг
     _moveWithBall(dirToGoal);
   }
 
   /// Расчет балла для паса
   double _calculatePassScore(double time, GoalComponent goal, String fieldZone) {
-    if (!_shouldPass(time)) return -1.0; // Пас невозможен, если не истек кулдаун
+    if (!_shouldPass(time)) return -1.0;
 
     final teammate = _findBestTeammate();
-    if (teammate == null) return -1.0; // Нет подходящего партнера
+    if (teammate == null) return -1.0;
 
     final passTarget = _calculatePassTarget(teammate);
-    if (!_isPassSafe(position, passTarget)) return -1.0; // Пас небезопасен
+    if (!_isPassSafe(position, passTarget)) return -1.0;
 
-    // Базовый балл в зависимости от зоны
     double zoneWeight;
     switch (fieldZone) {
       case 'defensive':
-        zoneWeight = 0.95; // Пас сильно предпочтителен в защите
+        zoneWeight = 0.95;
         break;
       case 'middle':
-        zoneWeight = 0.75; // Пас важен в центре
+        zoneWeight = 0.75;
         break;
       case 'attacking':
-        zoneWeight = 0.4; // Пас менее приоритетен в атаке
+        zoneWeight = 0.4;
         break;
       default:
         zoneWeight = 0.5;
     }
 
-    // Модификатор на основе роли
     double roleModifier;
     switch (pit.position) {
       case PlayerPosition.cb:
       case PlayerPosition.lb:
       case PlayerPosition.rb:
-        roleModifier = 1.2; // Защитники склонны к пасам
+        roleModifier = 1.2;
         break;
       case PlayerPosition.dm:
       case PlayerPosition.cm:
       case PlayerPosition.am:
       case PlayerPosition.lm:
       case PlayerPosition.rm:
-        roleModifier = 1.0; // Полузащитники нейтральны
+        roleModifier = 1.0;
         break;
       case PlayerPosition.ss:
       case PlayerPosition.st:
       case PlayerPosition.lw:
       case PlayerPosition.rw:
       case PlayerPosition.cf:
-        roleModifier = 0.8; // Нападающие менее склонны к пасам
+        roleModifier = 0.8;
         break;
       default:
         roleModifier = 1.0;
-        break;
     }
 
-    // Учитываем угрозу и навыки паса
     final isThreatened = _isThreatened(goal);
-    final threatFactor = isThreatened ? 1.2 : 1.0; // Увеличиваем приоритет паса под давлением
+    final threatFactor = isThreatened ? 1.2 : 1.0;
     final passSkill = pit.data.stats.lowPass / 100;
-
-    // Учитываем прогресс к воротам
     final goalDistNow = (goal.center - position).length;
     final goalDistThen = (goal.center - teammate.position).length;
     final progressScore = goalDistThen < goalDistNow ? 1.0 : 0.5;
@@ -204,54 +215,50 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final isThreatened = _isThreatened(goal);
     final dribblingSkill = pit.data.stats.dribbling / 100;
 
-    // Базовый балл в зависимости от зоны
     double zoneWeight;
     switch (fieldZone) {
       case 'defensive':
-        zoneWeight = 0.2; // Дриблинг опасен в защите
+        zoneWeight = 0.2;
         break;
       case 'middle':
-        zoneWeight = 0.65; // Дриблинг полезен в центре
+        zoneWeight = 0.65;
         break;
       case 'attacking':
-        zoneWeight = 0.8; // Дриблинг хорош в атаке
+        zoneWeight = 0.8;
         break;
       default:
         zoneWeight = 0.5;
     }
 
-    // Модификатор на основе роли
     double roleModifier;
     switch (pit.position) {
       case PlayerPosition.cb:
-        roleModifier = 0.6; // Защитники реже дриблят
+        roleModifier = 0.6;
         break;
       case PlayerPosition.lb:
       case PlayerPosition.rb:
-        roleModifier = 0.8; // Защитники реже дриблят
+        roleModifier = 0.8;
         break;
       case PlayerPosition.dm:
       case PlayerPosition.cm:
       case PlayerPosition.am:
-        roleModifier = 1.0; // Полузащитники нейтральны
+        roleModifier = 1.0;
         break;
       case PlayerPosition.lm:
       case PlayerPosition.rm:
       case PlayerPosition.lw:
       case PlayerPosition.rw:
-        roleModifier = 1.4; // Вингеры это любят
+        roleModifier = 1.4;
         break;
       case PlayerPosition.ss:
       case PlayerPosition.st:
       case PlayerPosition.cf:
-        roleModifier = 1.2; // Нападающие склонны к дриблингу
+        roleModifier = 1.2;
         break;
       default:
         roleModifier = 1.0;
-        break;
     }
 
-    // Уменьшаем балл при угрозе
     final threatFactor = isThreatened ? 0.7 : 1.0;
 
     return zoneWeight * roleModifier * (0.6 * dribblingSkill + 0.4 * threatFactor);
@@ -259,72 +266,65 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
   /// Расчет балла для удара
   double _calculateShootScore(double distToGoal, String fieldZone) {
-    // Запрещаем удары со своей половины поля
     if (_isOnOwnHalf()) return -1.0;
 
-    final shootThreshold = 150.0; // Фиксированный порог 150 пикселей
-    if (distToGoal > shootThreshold) return -1.0; // Слишком далеко для удара
+    final shootThreshold = 150.0;
+    if (distToGoal > shootThreshold) return -1.0;
 
-    // Базовый балл в зависимости от зоны
     double zoneWeight;
     switch (fieldZone) {
       case 'defensive':
-        zoneWeight = 0.0; // Удары невозможны в защите
+        zoneWeight = 0.0;
         break;
       case 'middle':
-        zoneWeight = 0.05; // Удары крайне редки в центре
+        zoneWeight = 0.05;
         break;
       case 'attacking':
-        zoneWeight = 0.9; // Удары предпочтительны в атаке
+        zoneWeight = 0.9;
         break;
       default:
         zoneWeight = 0.5;
     }
 
-    // Модификатор на основе роли
     double roleModifier;
     switch (pit.position) {
       case PlayerPosition.cb:
-        roleModifier = 0.4; // Защитники редко бьют
+        roleModifier = 0.4;
         break;
       case PlayerPosition.rb:
       case PlayerPosition.lb:
-        roleModifier = 0.5; // Защитники редко бьют
+        roleModifier = 0.5;
         break;
       case PlayerPosition.cm:
       case PlayerPosition.dm:
       case PlayerPosition.am:
-        roleModifier = 0.9; // Полузащитники умеренно бьют
+        roleModifier = 0.9;
         break;
       case PlayerPosition.lw:
       case PlayerPosition.rw:
       case PlayerPosition.rm:
       case PlayerPosition.lm:
-        roleModifier = 1.1; // Вингеры склонны к ударам
+        roleModifier = 1.1;
         break;
       case PlayerPosition.ss:
       case PlayerPosition.st:
       case PlayerPosition.cf:
-        roleModifier = 1.3; // Нападающие любят удары
+        roleModifier = 1.3;
         break;
       default:
         roleModifier = 1.0;
-        break;
     }
 
-    // Учитываем навыки удара и расстояние
     final shootSkill = pit.data.stats.shoots / 100;
-    final distanceFactor = 1.0 - (distToGoal / shootThreshold); // Ближе к воротам — выше балл
+    final distanceFactor = 1.0 - (distToGoal / shootThreshold);
 
     return zoneWeight * roleModifier * (0.6 * shootSkill + 0.4 * distanceFactor);
   }
 
   /// Выбор лучшего действия
   String _selectBestAction(double passScore, double dribbleScore, double shootScore) {
-    // Добавляем небольшой случайный шанс для нехарактерных действий
     final randomFactor = gameRef.random.nextDouble();
     if (randomFactor < 0.02) {
-      // 2% шанс выбрать случайное действие
       final actions = _isOnOwnHalf() ? ['pass', 'dribble'] : ['pass', 'dribble', 'shoot'];
       return actions[gameRef.random.nextInt(actions.length)];
     }
@@ -378,13 +378,8 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   /// Расчет цели для паса с упреждением
   Vector2 _calculatePassTarget(PlayerComponent teammate) {
     final leadFactor = 0.2 + 0.5 * (pit.data.stats.lowPass / 100);
-
-    // Изначальный пас с упреждением
     Vector2 predictedPos = teammate.position + (teammate.velocity * leadFactor);
-
-    // Попытаемся найти свободную точку рядом с predictedPos
     final freeSpot = _findFreeZoneNear(predictedPos);
-
     return freeSpot;
   }
 
@@ -392,20 +387,14 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final random = gameRef.random;
 
     for (int i = 0; i < attempts; i++) {
-      // Случайное смещение в радиусе
       final offset =
           Vector2(random.nextDouble() * 2 - 1, random.nextDouble() * 2 - 1).normalized() * random.nextDouble() * radius;
       final testPos = pos + offset;
-
-      // Проверяем, нет ли рядом соперников в зоне 30 пикселей
       final safe = !gameRef.players.any((p) => p.pit.teamId != pit.teamId && (p.position - testPos).length < 30);
-
       if (safe) {
         return testPos;
       }
     }
-
-    // Если не нашли безопасную зону, возвращаем исходную позицию
     return pos;
   }
 
@@ -419,15 +408,10 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   /// Перемещение с мячом
   void _moveWithBall(Vector2 dirToGoal, {double? speedFactor}) {
     final isThreatened = _isThreatened(_getOpponentGoal());
-
     final dribblingSkill = pit.data.stats.dribbling / 100;
-    final speedPenalty = isThreatened ? 0.2 : 0.1; // Базовое замедление при ведении
+    final speedPenalty = isThreatened ? 0.2 : 0.1;
     final baseSpeedFactor = speedFactor ?? (1.0 - speedPenalty * (1.0 - dribblingSkill));
-
-    final moveDir = isThreatened
-        ? _getEvadeDirection(dirToGoal) // Уклонение при угрозе
-        : dirToGoal; // Движение прямо к воротам
-
+    final moveDir = isThreatened ? _getEvadeDirection(dirToGoal) : dirToGoal;
     velocity = moveDir * pit.data.stats.maxSpeed * baseSpeedFactor;
     position += velocity * _dt;
     ball!.position = position + moveDir * (radius + ball!.radius + 1);
@@ -436,7 +420,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   /// Расчет направления для уклонения
   Vector2 _getEvadeDirection(Vector2 dirToGoal) {
     final dribblingSkill = pit.data.stats.dribbling / 100;
-    final evadeStrength = 0.5 + 0.5 * dribblingSkill; // от 0.5 до 1.0
+    final evadeStrength = 0.5 + 0.5 * dribblingSkill;
     final perpendicular = Vector2(-dirToGoal.y, dirToGoal.x);
     return (dirToGoal + perpendicular * evadeStrength).normalized();
   }
@@ -451,21 +435,16 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
     final shootSkill = pit.data.stats.shoots / 100;
     final goalHeight = 60.0;
-
-    // Вертикальное отклонение (разброс) уменьшается с ростом скилла
     final verticalSpread = goalHeight * 0.5 * (1 - shootSkill);
     final dy = (gameRef.random.nextDouble() - 0.5) * 2 * verticalSpread;
     final target = goalPos + Vector2(0, dy);
-
-    // Сила удара зависит от расстояния и скилла
     final minPower = 400.0;
     final maxPower = 1000.0;
-    final distFactor = (distToGoal / 500).clamp(0.0, 1.0); // нормируем в пределах поля
-
+    final distFactor = (distToGoal / 500).clamp(0.0, 1.0);
     final power = minPower + (maxPower - minPower) * distFactor * (0.7 + 0.3 * shootSkill);
 
     if (!_isShotSafe(position, target, ballSpeed: power)) {
-      return; // перехват — не бьем
+      return;
     }
 
     ball!.kickTowards(target, power, time, this);
@@ -489,12 +468,12 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
     if (isBallFree || isOpponentOwner) {
       if (_isDesignatedPresser()) {
-        _pressBall(time, distToBall, dirToBall); // Прессинг мяча
+        _pressBall(time, distToBall, dirToBall);
       } else {
-        _moveToOpenSpace(); // Занимаем свободную позицию
+        _moveToOpenSpace();
       }
     } else {
-      _moveToOpenSpace(); // Возвращаемся на позицию
+      _moveToOpenSpace();
     }
   }
 
@@ -508,87 +487,70 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
         return identical(this, p);
       }
     }
-
     return false;
   }
 
   bool _canPress() {
     final ballPos = ball?.position ?? Vector2.zero();
     final dist = (position - ballPos).length;
-
     final isOwnHalf = gameRef.isOwnHalf(pit.teamId, position);
-
-    // Случайный шанс на "внеплановый" прессинг
     final randomChance = gameRef.random.nextDouble();
 
     double pressThreshold;
     switch (pit.position) {
       case PlayerPosition.cb:
-        pressThreshold = 0.5; // Центральные защитники чаще всего прессингуют
+        pressThreshold = 0.5;
         break;
       case PlayerPosition.rb:
       case PlayerPosition.lb:
-        pressThreshold = 0.4; // Фланговые защитники — чуть реже
+        pressThreshold = 0.4;
         break;
-
       case PlayerPosition.dm:
-        pressThreshold = 0.4; // Опорники — умеренно
+        pressThreshold = 0.4;
         break;
       case PlayerPosition.cm:
       case PlayerPosition.am:
-        pressThreshold = 0.3; // Центральные полузащитники
+        pressThreshold = 0.3;
         break;
       case PlayerPosition.lm:
       case PlayerPosition.rm:
-        pressThreshold = 0.25; // Фланговые полузащитники
+        pressThreshold = 0.25;
         break;
-
       case PlayerPosition.lw:
       case PlayerPosition.rw:
-        pressThreshold = 0.15; // Вингеры — редко
+        pressThreshold = 0.15;
         break;
       case PlayerPosition.ss:
       case PlayerPosition.st:
       case PlayerPosition.cf:
-        pressThreshold = 0.1; // Чистые нападающие — почти не прессингуют вне зоны
+        pressThreshold = 0.1;
         break;
-
       default:
         pressThreshold = 0.3;
-        break;
     }
 
     if (randomChance < pressThreshold) {
       return true;
     }
 
-    // Логика по зоне и дистанции
     switch (pit.position) {
-      // Защитники — всегда прессингуют, если мяч рядом
       case PlayerPosition.cb:
       case PlayerPosition.rb:
       case PlayerPosition.lb:
         return true;
-
-      // Опорники и центральные полузащитники — прессинг в своей половине или близко к мячу
       case PlayerPosition.dm:
       case PlayerPosition.cm:
       case PlayerPosition.am:
         return isOwnHalf || dist < 200;
-
-      // Фланговые полузащитники — прессинг в своей половине или если очень близко
       case PlayerPosition.lm:
       case PlayerPosition.rm:
         return isOwnHalf || dist < 180;
-
-      // Вингеры и нападающие — только если близко
       case PlayerPosition.lw:
       case PlayerPosition.rw:
       case PlayerPosition.ss:
       case PlayerPosition.st:
       case PlayerPosition.cf:
         return dist < 150;
-
       default:
         return false;
     }
@@ -602,14 +564,10 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
     final defenceSkill = pit.data.stats.defence / 100;
     final cooldown = stealCooldown * (1.0 - 0.5 * defenceSkill);
-
     final extendedReach = radius + ball!.radius + 2 + 10 * defenceSkill;
-
     final ballOwner = ball!.owner;
     final dribblingSkill = (ballOwner?.pit.data.stats.dribbling ?? 0) / 100;
-
-    // Вероятность успешного отбора зависит от разницы защиты и дриблинга
-    final stealChance = (defenceSkill - dribblingSkill + 1.0) / 2.0; // от 0 до 1
+    final stealChance = (defenceSkill - dribblingSkill + 1.0) / 2.0;
 
     if (distToBall < extendedReach && (time - _lastStealTime) > cooldown) {
       final success = gameRef.random.nextDouble() < stealChance;
@@ -622,24 +580,9 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
   /// Перемещение на свободную позицию
   void _moveToOpenSpace() {
-    final attacking = _isAttackingTeam();
-    final ballPos = ball?.position ?? Vector2.zero();
-
-    // Базовая тактическая позиция
-    final basePos = getHomePosition();
-    final attackShift = _calculateTacticalShift(ballPos, attacking);
-
-    // Добавляем случайное смещение для подключения к атаке или обороне
-    final randomShift = _calculateRandomPositionShift(attacking);
-
-    final target = basePos + attackShift + randomShift;
-
-    // Учитываем ближайших соперников — не стоим вплотную к ним
-    final safePos = _avoidNearbyOpponents(target);
-
-    final toTarget = safePos - position;
+    final toTarget = desiredPosition - position;
     if (toTarget.length > 4) {
-      final speed = attacking ? pit.data.stats.maxSpeed * 0.6 : pit.data.stats.maxSpeed * 0.4;
+      final speed = _isAttackingTeam() ? pit.data.stats.maxSpeed * 0.6 : pit.data.stats.maxSpeed * 0.4;
       velocity = toTarget.normalized() * speed;
       position += velocity * _dt;
     } else {
@@ -651,11 +594,10 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final fieldLength = gameRef.size.x;
     final fieldWidth = gameRef.size.y;
 
-    // Насколько смещаемся к мячу
-    final attackBiasX = ((ballPos.x - position.x) / fieldLength) * 80;
-    final sideBiasY = ((ballPos.y - position.y) / fieldWidth) * 40;
+    // Увеличены коэффициенты для большего смещения к мячу
+    final attackBiasX = ((ballPos.x - position.x) / fieldLength) * 120; // Было 80
+    final sideBiasY = ((ballPos.y - position.y) / fieldWidth) * 60; // Было 40
 
-    // Усиливаем смещение в атаке
     final multiplier = attacking ? 1.0 : 0.3;
 
     return Vector2(attackBiasX * multiplier, sideBiasY * multiplier);
@@ -671,51 +613,46 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
     switch (pit.position) {
       case PlayerPosition.cb:
-        shiftThreshold = 0.2; // Центральные защитники редко смещаются
+        shiftThreshold = 0.2;
         break;
       case PlayerPosition.rb:
       case PlayerPosition.lb:
-        shiftThreshold = 0.3; // Фланговые защитники чуть активнее
+        shiftThreshold = 0.3;
         break;
-
       case PlayerPosition.dm:
-        shiftThreshold = 0.35; // Опорники
+        shiftThreshold = 0.35;
         break;
       case PlayerPosition.cm:
       case PlayerPosition.am:
-        shiftThreshold = 0.4; // Центральные полузащитники
+        shiftThreshold = 0.4;
         break;
       case PlayerPosition.lm:
       case PlayerPosition.rm:
-        shiftThreshold = 0.45; // Фланговые полузащитники
+        shiftThreshold = 0.45;
         break;
-
       case PlayerPosition.lw:
       case PlayerPosition.rw:
-        shiftThreshold = 0.35; // Вингеры
+        shiftThreshold = 0.35;
         break;
       case PlayerPosition.ss:
       case PlayerPosition.st:
       case PlayerPosition.cf:
-        shiftThreshold = 0.15; // Чистые форварды
+        shiftThreshold = 0.15;
         break;
-
       default:
         shiftThreshold = 0.3;
-        break;
     }
 
     if (shiftChance < shiftThreshold) {
       final isTeamOnLeft = gameRef.isTeamOnLeftSide(pit.teamId);
 
-      // Логика смещения по X — в атаке вперёд, в обороне назад
+      // Увеличено смещение по X
       if (attacking) {
-        xShift = isTeamOnLeft ? 50 : -50;
+        xShift = isTeamOnLeft ? 100 : -100; // Было 50
       } else {
-        xShift = isTeamOnLeft ? -50 : 50;
+        xShift = isTeamOnLeft ? -100 : 100; // Было 50
       }
 
-      // Логика смещения по Y — фланговые сильнее смещаются вертикально
       final isWidePlayer = [
         PlayerPosition.rb,
         PlayerPosition.lb,
@@ -725,8 +662,34 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
         PlayerPosition.rw,
       ].contains(pit.position);
 
-      final yRange = isWidePlayer ? 40 : 20;
+      // Увеличен диапазон по Y
+      final yRange = isWidePlayer ? 80 : 40; // Было 40 и 20
       yShift = (random.nextDouble() - 0.5) * yRange;
+
+      // Опционально: усиление смещения по ролям
+      double xShiftMultiplier;
+      switch (pit.position) {
+        case PlayerPosition.st:
+        case PlayerPosition.cf:
+        case PlayerPosition.ss:
+          xShiftMultiplier = 1.5;
+          break;
+        case PlayerPosition.lw:
+        case PlayerPosition.rw:
+          xShiftMultiplier = 1.2;
+          break;
+        case PlayerPosition.am:
+        case PlayerPosition.cm:
+          xShiftMultiplier = 1.0;
+          break;
+        case PlayerPosition.dm:
+        case PlayerPosition.cb:
+          xShiftMultiplier = 0.8;
+          break;
+        default:
+          xShiftMultiplier = 1.0;
+      }
+      xShift *= xShiftMultiplier;
     }
 
     return Vector2(xShift, yShift);
@@ -734,13 +697,11 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
   Vector2 _avoidNearbyOpponents(Vector2 target) {
     final nearbyEnemies = gameRef.players.where((p) => p.pit.teamId != pit.teamId && (p.position - target).length < 40);
-
     Vector2 avoidance = Vector2.zero();
     for (final enemy in nearbyEnemies) {
       final away = (target - enemy.position).normalized();
-      avoidance += away * 20; // отталкиваемся от противников
+      avoidance += away * 20;
     }
-
     return target + avoidance;
   }
 
@@ -770,14 +731,11 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final toTeammate = t.position - position;
     final dist = toTeammate.length;
     final goalDistThen = (goalPos - t.position).length;
-
     final goalDir = goalPos - position;
     final angle = goalDir.angleTo(toTeammate).abs();
-
-    final distScore = 1 - (dist - 150).abs() / 150; // Оптимальная дистанция - 150px
-    final angleScore = 1 - angle / (pi / 2); // Лучше перпендикулярные пасы
-    final progressScore = goalDistThen < goalDistNow ? 1.0 : 0.0; // Движение к воротам
-
+    final distScore = 1 - (dist - 150).abs() / 150;
+    final angleScore = 1 - angle / (pi / 2);
+    final progressScore = goalDistThen < goalDistNow ? 1.0 : 0.0;
     return distScore * 0.4 + angleScore * 0.3 + progressScore * 0.3;
   }
 
@@ -785,7 +743,6 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   bool _isPassSafe(Vector2 from, Vector2 to) {
     final passSkill = pit.data.stats.lowPass / 100;
     final adjustedTolerance = 25 + 20 * (1 - passSkill);
-
     return !gameRef.players.any(
       (enemy) => enemy.pit.teamId != pit.teamId && _isInInterceptionZone(enemy, from, to, adjustedTolerance),
     );
@@ -803,13 +760,9 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final toTarget = to - from;
     final proj = toEnemy.dot(toTarget.normalized());
     if (proj < 0 || proj > toTarget.length) return false;
-
     final perpendicular = toEnemy - toTarget.normalized() * proj;
-
-    // 🎯 Чем выше скорость мяча, тем меньше шанс перехвата (меньше зона)
-    final speedFactor = (1 / (ballSpeed / 400)).clamp(0.3, 1.0); // быстро → 0.3, медленно → 1.0
+    final speedFactor = (1 / (ballSpeed / 400)).clamp(0.3, 1.0);
     final dynamicTolerance = tolerance * speedFactor;
-
     return perpendicular.length < dynamicTolerance;
   }
 
@@ -829,27 +782,21 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   Vector2 getHomePosition() {
     final fieldSize = gameRef.size;
     final isLeft = gameRef.isTeamOnLeftSide(pit.teamId);
-
     final base = basePositions[pit.position] ?? const Offset(0.5, 0.5);
-
-    // Базовая позиция
     double xZone = isLeft ? fieldSize.x * base.dx : fieldSize.x * (1 - base.dx);
     double yZone = fieldSize.y * base.dy;
 
-    // Находим всех игроков с той же позицией в команде
     final samePositionPlayers = gameRef.players
         .where((p) => p.pit.teamId == pit.teamId && p.pit.position == pit.position)
         .toList();
 
-    // Если игроков с той же позицией больше одного, распределяем их
     if (samePositionPlayers.length > 1) {
       final index = samePositionPlayers.indexOf(this);
-      final offsetStep = 100.0; // Расстояние между игроками с одинаковой позицией
-      xZone += (index - (samePositionPlayers.length - 1) / 2) * offsetStep; // Смещение по X
-      yZone += (index - (samePositionPlayers.length - 1) / 2) * offsetStep; // Смещение по Y
+      final offsetStep = 100.0;
+      xZone += (index - (samePositionPlayers.length - 1) / 2) * offsetStep;
+      yZone += (index - (samePositionPlayers.length - 1) / 2) * offsetStep;
     }
 
-    // Добавляем небольшой случайный сдвиг
     final random = gameRef.random;
     xZone += (random.nextDouble() - 0.5) * 10;
     yZone += (random.nextDouble() - 0.5) * 10;
@@ -858,27 +805,22 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   }
 
   bool _randomSkipPassDecision() {
-    return gameRef.random.nextDouble() < 0.1; // 10% проигнорировать пас
+    return gameRef.random.nextDouble() < 0.1;
   }
 
   // ====================== Отрисовка игрока ======================
 
   @override
   void render(Canvas canvas) {
-    // Тень
     final shadowPaint = Paint()..color = Colors.black.withOpacity(0.25);
     canvas.drawCircle(Offset(2, 3), radius * 0.95, shadowPaint);
 
-    // Контур
     final outlinePaint = Paint()..color = Colors.black;
     canvas.drawCircle(Offset.zero, radius + 2.0, outlinePaint);
-
-    // Основной цвет (синий/желтый в зависимости от команды)
 
     final fillPaint = Paint()..color = pit.teamId == gameRef.teamA.id ? gameRef.teamA.color : gameRef.teamB.color;
     canvas.drawCircle(Offset.zero, radius, fillPaint);
 
-    // Номер игрока
     final textPainter = TextPainter(
       text: TextSpan(
         text: pit.number.toString(),
