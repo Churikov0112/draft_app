@@ -201,16 +201,16 @@ class MatchGame extends FlameGame {
     );
 
     players.addAll([
-      for (final p in teamA.startingPlayers) PlayerComponent(player: p),
-      for (final p in teamB.startingPlayers) PlayerComponent(player: p),
+      for (final pit in teamA.startingPlayers) PlayerComponent(pit: pit),
+      for (final pit in teamB.startingPlayers) PlayerComponent(pit: pit),
     ]);
 
     world.addAll(players);
   }
 
   void _positionTeams() {
-    final teamAplayers = players.where((p) => p.player.teamId == teamA.id).toList();
-    final teamBplayers = players.where((p) => p.player.teamId == teamB.id).toList();
+    final teamAplayers = players.where((p) => p.pit.teamId == teamA.id).toList();
+    final teamBplayers = players.where((p) => p.pit.teamId == teamB.id).toList();
 
     if (isTeamOnLeftSide(teamA.id)) {
       _positionTeam(teamAplayers, 100); // Team A слева
@@ -288,8 +288,8 @@ class MatchGame extends FlameGame {
   }
 
   void _resetPlayersPositions() {
-    final teamAplayers = players.where((p) => p.player.teamId == teamA.id).toList();
-    final teamBplayers = players.where((p) => p.player.teamId == teamB.id).toList();
+    final teamAplayers = players.where((p) => p.pit.teamId == teamA.id).toList();
+    final teamBplayers = players.where((p) => p.pit.teamId == teamB.id).toList();
 
     if (isTeamOnLeftSide(teamA.id)) {
       _positionTeam(teamAplayers, 100); // Team A слева
@@ -301,7 +301,7 @@ class MatchGame extends FlameGame {
   }
 
   void _assignNewBallOwner(String scoringTeamId) {
-    final opposingTeamPlayers = players.where((p) => p.player.teamId != scoringTeamId).toList();
+    final opposingTeamPlayers = players.where((p) => p.pit.teamId != scoringTeamId).toList();
     final newOwner = opposingTeamPlayers[random.nextInt(opposingTeamPlayers.length)];
     ball.takeOwnership(newOwner);
 
