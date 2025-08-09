@@ -6,11 +6,15 @@ import '../../goal_component.dart';
 import '../player_component.dart';
 import '../player_utils.dart';
 
+enum PlayerAction { pass, dribble, shoot }
+
 extension PlayerDecisionMaking on PlayerComponent {
-  String selectBestAction(double passScore, double dribbleScore, double shootScore, GoalComponent goal) {
+  PlayerAction selectBestAction(double passScore, double dribbleScore, double shootScore, GoalComponent goal) {
     final randomFactor = gameRef.random.nextDouble();
     if (randomFactor < 0.02) {
-      final actions = isOnOwnHalf() ? ['pass', 'dribble'] : ['pass', 'dribble', 'shoot'];
+      final actions = isOnOwnHalf()
+          ? [PlayerAction.pass, PlayerAction.dribble]
+          : [PlayerAction.pass, PlayerAction.dribble, PlayerAction.shoot];
       return actions[gameRef.random.nextInt(actions.length)];
     }
 
@@ -21,9 +25,9 @@ extension PlayerDecisionMaking on PlayerComponent {
       if (goalDistThen < goalDistNow && passScore >= 0) passScore += 0.2;
     }
 
-    if (passScore >= dribbleScore && passScore >= shootScore) return 'pass';
-    if (shootScore >= passScore && shootScore >= dribbleScore) return 'shoot';
-    return 'dribble';
+    if (passScore >= dribbleScore && passScore >= shootScore) return PlayerAction.pass;
+    if (shootScore >= passScore && shootScore >= dribbleScore) return PlayerAction.shoot;
+    return PlayerAction.dribble;
   }
 
   PlayerComponent? findBestTeammate() {
@@ -34,26 +38,26 @@ extension PlayerDecisionMaking on PlayerComponent {
     final goalPos = getOpponentGoal().center;
     final goalDistNow = (goalPos - position).length;
 
-    for (final t in teammates) {
-      final score = calculateTeammateScore(t, goalPos, goalDistNow);
+    for (final teammate in teammates) {
+      final score = calculateTeammateScore(teammate, goalPos, goalDistNow);
       if (score > bestScore && score > 0.5) {
         bestScore = score;
-        best = t as PlayerComponent?;
+        best = teammate;
       }
     }
     return best;
   }
 
-  double calculateTeammateScore(PlayerComponent t, Vector2 goalPos, double goalDistNow) {
-    final toTeammate = t.position - position;
+  double calculateTeammateScore(PlayerComponent teammate, Vector2 goalPos, double goalDistNow) {
+    final toTeammate = teammate.position - position;
     final dist = toTeammate.length;
-    final goalDistThen = (goalPos - t.position).length;
+    final goalDistThen = (goalPos - teammate.position).length;
     final goalDir = goalPos - position;
     final angle = goalDir.angleTo(toTeammate).abs();
     final distScore = 1 - (dist - 150).abs() / 150;
     final angleScore = 1 - angle / (pi / 2);
     final progressScore = goalDistThen < goalDistNow ? 1.0 : 0.0;
-    final nearestOpponentDist = getNearestOpponentTo(t.position).length;
+    final nearestOpponentDist = getNearestOpponentTo(teammate.position).length;
     final safetyScore = nearestOpponentDist > 50 ? 1.0 : 0.5;
     return distScore * 0.3 + angleScore * 0.3 + progressScore * 0.2 + safetyScore * 0.2;
   }

@@ -13,14 +13,14 @@ import 'player_skills.dart';
 
 extension PlayerBallControl on PlayerComponent {
   void handleBallInteraction() {
-    final dirToBall = ball!.position - position;
-    final distToBall = dirToBall.length;
     final hasBall = ball!.owner == this;
     final time = gameRef.elapsedTime;
 
     if (hasBall) {
       handleBallPossession(time: time);
     } else {
+      final dirToBall = ball!.position - position;
+      final distToBall = dirToBall.length;
       handleBallChasing(time: time, distToBall: distToBall, dirToBall: dirToBall);
     }
   }
@@ -42,16 +42,11 @@ extension PlayerBallControl on PlayerComponent {
 
     final bestAction = selectBestAction(passScore, dribbleScore, shootScore, goal);
 
-    if (bestAction == 'pass' && !randomSkipPassDecision()) {
+    if (bestAction == PlayerAction.pass && !randomSkipPassDecision()) {
       if (attemptPass(time)) return;
     }
 
-    if (bestAction == 'shoot') {
-      shootAtGoal(goalPos, time);
-      return;
-    }
-
-    if (distToGoal < 10) {
+    if (bestAction == PlayerAction.shoot || distToGoal < 10) {
       shootAtGoal(goalPos, time);
       return;
     }

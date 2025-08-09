@@ -4,6 +4,8 @@ import 'player_component.dart';
 
 enum TeamState { attack, defence, counter, neutral }
 
+enum FieldZone { attacking, defensive, middle }
+
 extension PlayerState on PlayerComponent {
   void updateTeamState() {
     final ballOwnerTeam = ball?.owner?.pit.teamId;
@@ -24,5 +26,4 @@ extension PlayerState on PlayerComponent {
   }
 
   bool isAttackingTeam() => ball?.owner?.pit.teamId == pit.teamId;
-  bool isOnOwnHalf() => gameRef.isOwnHalf(pit.teamId, position);
 }

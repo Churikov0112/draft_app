@@ -5,12 +5,13 @@ import 'dart:math';
 import '../../../models/player.dart';
 import '../../goal_component.dart';
 import '../player_component.dart';
+import '../player_state.dart';
 import '../player_utils.dart';
 import 'player_ball_control.dart';
 import 'player_decision_making.dart';
 
 extension PlayerSkills on PlayerComponent {
-  double calculatePassScore(double time, GoalComponent goal, String fieldZone) {
+  double calculatePassScore(double time, GoalComponent goal, FieldZone fieldZone) {
     if (!shouldPass(time)) return -1.0;
     final teammate = findBestTeammate();
     if (teammate == null) return -1.0;
@@ -30,7 +31,7 @@ extension PlayerSkills on PlayerComponent {
     return zoneWeight * roleModifier * (0.4 * passSkill + 0.3 * progressScore + 0.3 * threatFactor);
   }
 
-  double calculateDribbleScore(GoalComponent goal, String fieldZone) {
+  double calculateDribbleScore(GoalComponent goal, FieldZone fieldZone) {
     final _isThreatened = isThreatened(goal);
     final dribblingSkill = pit.data.stats.dribbling / 100;
     final zoneWeight = getZoneWeight(fieldZone);
@@ -39,7 +40,7 @@ extension PlayerSkills on PlayerComponent {
     return zoneWeight * roleModifier * (0.6 * dribblingSkill + 0.4 * threatFactor);
   }
 
-  double calculateShootScore(double distToGoal, String fieldZone) {
+  double calculateShootScore(double distToGoal, FieldZone fieldZone) {
     final shootThreshold = 200.0;
     if (isOnOwnHalf() || distToGoal > shootThreshold) return -1.0;
 
@@ -52,29 +53,25 @@ extension PlayerSkills on PlayerComponent {
     return zoneWeight * roleModifier * (0.5 * shootSkill + 0.3 * distanceFactor + 0.2 * threatFactor);
   }
 
-  double getZoneWeight(String fieldZone) {
+  double getZoneWeight(FieldZone fieldZone) {
     switch (fieldZone) {
-      case 'defensive':
+      case FieldZone.defensive:
         return 0.95;
-      case 'middle':
+      case FieldZone.middle:
         return 0.75;
-      case 'attacking':
+      case FieldZone.attacking:
         return 0.4;
-      default:
-        return 0.5;
     }
   }
 
-  double getShootZoneWeight(String fieldZone, double distToGoal) {
+  double getShootZoneWeight(FieldZone fieldZone, double distToGoal) {
     switch (fieldZone) {
-      case 'defensive':
+      case FieldZone.defensive:
         return 0.0;
-      case 'middle':
+      case FieldZone.middle:
         return 0.05;
-      case 'attacking':
+      case FieldZone.attacking:
         return distToGoal < 50 ? 1.2 : 0.9;
-      default:
-        return 0.5;
     }
   }
 
