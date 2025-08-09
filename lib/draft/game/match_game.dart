@@ -410,7 +410,11 @@ class MatchGame extends FlameGame {
     super.update(dt);
 
     if (gameState == GameState.finished) {
-      return; // Stop updates when game is finished
+      return; // Полная остановка обновлений при завершении игры
+    } // В MatchGame.update заменить проверку окончания
+    else if (gameState == GameState.secondHalf && elapsedTime >= 2 * halftimeDuration) {
+      finishGame(); // Используем новый метод вместо прямого изменения состояния
+      return;
     }
 
     elapsedTime += dt;
@@ -513,5 +517,16 @@ class MatchGame extends FlameGame {
 
     final directionToCenter = (size / 2 - newOwner.position).normalized();
     ball.position = newOwner.position + directionToCenter * (newOwner.radius + ball.radius + 1);
+  }
+
+  void finishGame() {
+    gameState = GameState.finished;
+    // Остановить мяч
+    ball.velocity = Vector2.zero();
+    // Остановить всех игроков
+    for (final player in players) {
+      player.velocity = Vector2.zero();
+    }
+    print('Матч завершен! Финальный счет: ${teamA.name} $teamAscore : $teamBscore ${teamB.name}');
   }
 }

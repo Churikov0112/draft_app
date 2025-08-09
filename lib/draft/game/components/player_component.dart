@@ -70,8 +70,13 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   @override
   void update(double dt) {
     super.update(dt);
-    _dt = dt;
+    // Полная остановка если матч завершен
+    if (gameRef.gameState == GameState.finished) {
+      velocity = Vector2.zero();
+      return;
+    }
 
+    _dt = dt;
     if (ball == null) return;
 
     _updateTeamState();
@@ -460,6 +465,11 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   }
 
   void _moveWithBall(Vector2 dirToGoal, {double? speedFactor}) {
+    if (gameRef.gameState == GameState.finished) {
+      velocity = Vector2.zero();
+      return;
+    }
+
     final isThreatened = _isThreatened(_getOpponentGoal());
     final dribblingSkill = pit.data.stats.dribbling / 100;
     final speedPenalty = isThreatened ? 0.2 : 0.1;
@@ -601,6 +611,11 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   }
 
   void _pressBall(double time, double distToBall, Vector2 dirToBall) {
+    if (gameRef.gameState == GameState.finished) {
+      velocity = Vector2.zero();
+      return;
+    }
+
     final moveDir = dirToBall.normalized();
     velocity = moveDir * pit.data.stats.maxSpeed;
     position += velocity * _dt;
@@ -624,6 +639,10 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   }
 
   void _moveToOpenSpace() {
+    if (gameRef.gameState == GameState.finished) {
+      velocity = Vector2.zero();
+      return;
+    }
     final toTarget = desiredPosition - position;
     if (toTarget.length > 4) {
       final speed = _isAttackingTeam() ? pit.data.stats.maxSpeed * 0.6 : pit.data.stats.maxSpeed * 0.4;
