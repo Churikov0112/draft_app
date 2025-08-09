@@ -2,7 +2,7 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
 import '../match_game.dart';
-import 'player_component.dart';
+import 'player/player_component.dart';
 
 class BallComponent extends PositionComponent with HasGameRef<MatchGame> {
   final double radius = 6.0;

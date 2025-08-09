@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 
 import 'components/ball_component.dart';
 import 'components/goal_component.dart';
-import 'components/player_component.dart';
+import 'components/player/player_component.dart';
 import 'components/score_component.dart';
 import 'components/time_component.dart';
 
