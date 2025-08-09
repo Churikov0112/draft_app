@@ -17,65 +17,43 @@ import 'components/time_component.dart';
 enum GameState { firstHalf, halftime, secondHalf, finished }
 
 class MatchGame extends FlameGame {
-  final fieldSize = Vector2(1000, 600); // Настоящее поле
+  // Constants
+  static const double halftimeDuration = 45;
+  final Vector2 fieldSize = Vector2(1000, 600);
+
+  // Game components
   late BallComponent ball;
   late GoalComponent leftGoal;
   late GoalComponent rightGoal;
 
+  // Game state
   final Random random = Random();
-
   double elapsedTime = 0;
-  double halftimeDuration = 45;
   GameState gameState = GameState.firstHalf;
 
+  // Teams
   final List<PlayerComponent> players = [];
-
   late TeamModel teamA; // left in first half
   late TeamModel teamB; // right in first half
   int teamAscore = 0;
   int teamBscore = 0;
 
-  Vector2 getGoalPositionForTeam(String teamId) {
-    final isLeftSide = isTeamOnLeftSide(teamId);
-    return isLeftSide ? rightGoal.center : leftGoal.center;
-  }
-
-  bool isTeamOnLeftSide(String teamId) {
-    final isFirstHalf = gameState == GameState.firstHalf;
-    final isTeamALeft = isFirstHalf;
-    return teamId == teamA.id ? isTeamALeft : !isTeamALeft;
-  }
-
-  bool isOwnHalf(String teamId, Vector2 position) {
-    final fieldMiddle = size.x / 2;
-    final isFirstHalf = gameState == GameState.firstHalf;
-    final isTeamAOnLeft = isFirstHalf;
-    final isOnLeftSide = position.x < fieldMiddle;
-
-    if (teamId == teamA.id) {
-      return isTeamAOnLeft == isOnLeftSide;
-    } else {
-      return isTeamAOnLeft != isOnLeftSide;
-    }
-  }
-
-  // Переопределим size getter для компонента
   @override
   Vector2 get size => fieldSize;
 
   @override
   Future<void> onLoad() async {
+    _initializeGameComponents();
+    _setupCamera();
+    await super.onLoad();
+  }
+
+  // Initialization methods
+  void _initializeGameComponents() {
     _setupField();
     _setupGoals();
     _setupBall();
-    _setupPlayers();
-
-    // Установите камеру для следования за мячом
-    camera.smoothFollow(ball, stiffness: 0.85);
-    camera.viewport.add(ScoreComponent(getScore: () => '${teamA.name}  |$teamAscore : $teamBscore|  ${teamB.name}'));
-    camera.viewport.add(TimeComponent(getTime: () => "${elapsedTime.toStringAsFixed(0)}'"));
-
-    return super.onLoad();
+    _setupTeams();
   }
 
   void _setupField() {
@@ -88,286 +66,110 @@ class MatchGame extends FlameGame {
     world.addAll([leftGoal, rightGoal]);
   }
 
-  _setupBall() {
+  void _setupBall() {
     ball = BallComponent(position: size / 2);
     world.add(ball);
   }
 
-  void _setupPlayers() {
+  void _setupTeams() {
     _createTeams();
     _positionTeams();
     _linkPlayersToBall();
     _setInitialBallOwner();
   }
 
+  void _setupCamera() {
+    camera.smoothFollow(ball, stiffness: 0.85);
+    camera.viewport.add(ScoreComponent(getScore: () => '${teamA.name}  |$teamAscore : $teamBscore|  ${teamB.name}'));
+    camera.viewport.add(TimeComponent(getTime: () => "${elapsedTime.toStringAsFixed(0)}'"));
+  }
+
+  // Team management methods
   void _createTeams() {
-    final aId = "team_a_id";
-    final bId = "team_b_id";
-
-    teamA = TeamModel(
-      id: aId,
-      name: "Red",
-      color: Colors.red,
-      startingPlayers: [
-        PlayerInTeamModel(
-          teamId: aId,
-          number: 1,
-          position: PlayerPosition.gk,
-          data: PlayerModel(
-            id: "$aId-1",
-            name: "1",
-            usualPosition: PlayerPosition.gk,
-            stats: PlayerStats(maxSpeed: 60, lowPass: 60, shoots: 60, defence: 60, dribbling: 60, goalkeeper: 100),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: aId,
-          number: 2,
-          position: PlayerPosition.cb,
-          data: PlayerModel(
-            id: "$aId-2",
-            name: "2",
-            usualPosition: PlayerPosition.cb,
-            stats: PlayerStats(maxSpeed: 70, lowPass: 70, shoots: 70, defence: 85, dribbling: 65, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: aId,
-          number: 3,
-          position: PlayerPosition.cb,
-          data: PlayerModel(
-            id: "$aId-3",
-            name: "3",
-            usualPosition: PlayerPosition.cb,
-            stats: PlayerStats(maxSpeed: 70, lowPass: 70, shoots: 70, defence: 85, dribbling: 65, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: aId,
-          number: 4,
-          position: PlayerPosition.rb,
-          data: PlayerModel(
-            id: "$aId-4",
-            name: "4",
-            usualPosition: PlayerPosition.rb,
-            stats: PlayerStats(maxSpeed: 80, lowPass: 70, shoots: 70, defence: 75, dribbling: 80, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: aId,
-          number: 5,
-          position: PlayerPosition.lb,
-          data: PlayerModel(
-            id: "$aId-5",
-            name: "5",
-            usualPosition: PlayerPosition.lb,
-            stats: PlayerStats(maxSpeed: 80, lowPass: 70, shoots: 70, defence: 75, dribbling: 80, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: aId,
-          number: 6,
-          position: PlayerPosition.dm,
-          data: PlayerModel(
-            id: "$aId-6",
-            name: "6",
-            usualPosition: PlayerPosition.dm,
-            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 70, defence: 80, dribbling: 70, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: aId,
-          number: 7,
-          position: PlayerPosition.cm,
-          data: PlayerModel(
-            id: "$aId-7",
-            name: "7",
-            usualPosition: PlayerPosition.cm,
-            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 75, defence: 75, dribbling: 75, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: aId,
-          number: 8,
-          position: PlayerPosition.cm,
-          data: PlayerModel(
-            id: "$aId-8",
-            name: "8",
-            usualPosition: PlayerPosition.cm,
-            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 75, defence: 75, dribbling: 75, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: aId,
-          number: 9,
-          position: PlayerPosition.rw,
-          data: PlayerModel(
-            id: "$aId-9",
-            name: "9",
-            usualPosition: PlayerPosition.rw,
-            stats: PlayerStats(maxSpeed: 90, lowPass: 75, shoots: 80, defence: 60, dribbling: 85, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: aId,
-          number: 10,
-          position: PlayerPosition.lw,
-          data: PlayerModel(
-            id: "$aId-10",
-            name: "10",
-            usualPosition: PlayerPosition.lw,
-            stats: PlayerStats(maxSpeed: 90, lowPass: 75, shoots: 80, defence: 60, dribbling: 85, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: aId,
-          number: 11,
-          position: PlayerPosition.st,
-          data: PlayerModel(
-            id: "$aId-11",
-            name: "11",
-            usualPosition: PlayerPosition.st,
-            stats: PlayerStats(maxSpeed: 95, lowPass: 75, shoots: 85, defence: 60, dribbling: 80, goalkeeper: 40),
-          ),
-        ),
-      ],
-    );
-
-    teamB = TeamModel(
-      id: bId,
-      name: "Blue",
-      color: Colors.blue,
-      startingPlayers: [
-        PlayerInTeamModel(
-          teamId: bId,
-          number: 1,
-          position: PlayerPosition.gk,
-          data: PlayerModel(
-            id: "$bId-1",
-            name: "1",
-            usualPosition: PlayerPosition.gk,
-            stats: PlayerStats(maxSpeed: 60, lowPass: 60, shoots: 60, defence: 60, dribbling: 60, goalkeeper: 100),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: bId,
-          number: 2,
-          position: PlayerPosition.cb,
-          data: PlayerModel(
-            id: "$bId-2",
-            name: "2",
-            usualPosition: PlayerPosition.cb,
-            stats: PlayerStats(maxSpeed: 70, lowPass: 70, shoots: 70, defence: 85, dribbling: 65, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: bId,
-          number: 3,
-          position: PlayerPosition.cb,
-          data: PlayerModel(
-            id: "$bId-3",
-            name: "3",
-            usualPosition: PlayerPosition.cb,
-            stats: PlayerStats(maxSpeed: 70, lowPass: 70, shoots: 70, defence: 85, dribbling: 65, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: bId,
-          number: 4,
-          position: PlayerPosition.rb,
-          data: PlayerModel(
-            id: "$bId-4",
-            name: "4",
-            usualPosition: PlayerPosition.rb,
-            stats: PlayerStats(maxSpeed: 80, lowPass: 70, shoots: 70, defence: 75, dribbling: 80, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: bId,
-          number: 5,
-          position: PlayerPosition.lb,
-          data: PlayerModel(
-            id: "$bId-5",
-            name: "5",
-            usualPosition: PlayerPosition.lb,
-            stats: PlayerStats(maxSpeed: 80, lowPass: 70, shoots: 70, defence: 75, dribbling: 80, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: bId,
-          number: 6,
-          position: PlayerPosition.dm,
-          data: PlayerModel(
-            id: "$bId-6",
-            name: "6",
-            usualPosition: PlayerPosition.dm,
-            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 70, defence: 80, dribbling: 70, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: bId,
-          number: 7,
-          position: PlayerPosition.cm,
-          data: PlayerModel(
-            id: "$bId-7",
-            name: "7",
-            usualPosition: PlayerPosition.cm,
-            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 75, defence: 75, dribbling: 75, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: bId,
-          number: 8,
-          position: PlayerPosition.cm,
-          data: PlayerModel(
-            id: "$bId-8",
-            name: "8",
-            usualPosition: PlayerPosition.cm,
-            stats: PlayerStats(maxSpeed: 75, lowPass: 80, shoots: 75, defence: 75, dribbling: 75, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: bId,
-          number: 9,
-          position: PlayerPosition.rw,
-          data: PlayerModel(
-            id: "$bId-9",
-            name: "9",
-            usualPosition: PlayerPosition.rw,
-            stats: PlayerStats(maxSpeed: 90, lowPass: 75, shoots: 80, defence: 60, dribbling: 85, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: bId,
-          number: 10,
-          position: PlayerPosition.lw,
-          data: PlayerModel(
-            id: "$bId-10",
-            name: "10",
-            usualPosition: PlayerPosition.lw,
-            stats: PlayerStats(maxSpeed: 90, lowPass: 75, shoots: 80, defence: 60, dribbling: 85, goalkeeper: 40),
-          ),
-        ),
-        PlayerInTeamModel(
-          teamId: bId,
-          number: 11,
-          position: PlayerPosition.st,
-          data: PlayerModel(
-            id: "$bId-11",
-            name: "11",
-            usualPosition: PlayerPosition.st,
-            stats: PlayerStats(maxSpeed: 95, lowPass: 75, shoots: 85, defence: 60, dribbling: 80, goalkeeper: 40),
-          ),
-        ),
-      ],
-    );
+    teamA = _createTeamA();
+    teamB = _createTeamB();
 
     players.addAll([
-      for (final pit in teamA.startingPlayers) PlayerComponent(pit: pit),
-      for (final pit in teamB.startingPlayers) PlayerComponent(pit: pit),
+      ...teamA.startingPlayers.map((pit) => PlayerComponent(pit: pit)),
+      ...teamB.startingPlayers.map((pit) => PlayerComponent(pit: pit)),
     ]);
 
     world.addAll(players);
+  }
+
+  TeamModel _createTeamA() {
+    const teamId = "team_a_id";
+    return TeamModel(
+      id: teamId,
+      name: "Red",
+      color: Colors.red,
+      startingPlayers: [
+        _createPlayer(teamId, 1, PlayerPosition.gk, 60, 60, 60, 60, 60, 100),
+        _createPlayer(teamId, 2, PlayerPosition.cb, 70, 70, 70, 85, 65, 40),
+        _createPlayer(teamId, 3, PlayerPosition.cb, 70, 70, 70, 85, 65, 40),
+        _createPlayer(teamId, 4, PlayerPosition.rb, 80, 70, 70, 75, 80, 40),
+        _createPlayer(teamId, 5, PlayerPosition.lb, 80, 70, 70, 75, 80, 40),
+        _createPlayer(teamId, 6, PlayerPosition.dm, 75, 80, 70, 80, 70, 40),
+        _createPlayer(teamId, 7, PlayerPosition.cm, 75, 80, 75, 75, 75, 40),
+        _createPlayer(teamId, 8, PlayerPosition.cm, 75, 80, 75, 75, 75, 40),
+        _createPlayer(teamId, 9, PlayerPosition.rw, 90, 75, 80, 60, 85, 40),
+        _createPlayer(teamId, 10, PlayerPosition.lw, 90, 75, 80, 60, 85, 40),
+        _createPlayer(teamId, 11, PlayerPosition.st, 95, 75, 85, 60, 80, 40),
+      ],
+    );
+  }
+
+  TeamModel _createTeamB() {
+    const teamId = "team_b_id";
+    return TeamModel(
+      id: teamId,
+      name: "Blue",
+      color: Colors.blue,
+      startingPlayers: [
+        _createPlayer(teamId, 1, PlayerPosition.gk, 60, 60, 60, 60, 60, 100),
+        _createPlayer(teamId, 2, PlayerPosition.cb, 70, 70, 70, 85, 65, 40),
+        _createPlayer(teamId, 3, PlayerPosition.cb, 70, 70, 70, 85, 65, 40),
+        _createPlayer(teamId, 4, PlayerPosition.rb, 80, 70, 70, 75, 80, 40),
+        _createPlayer(teamId, 5, PlayerPosition.lb, 80, 70, 70, 75, 80, 40),
+        _createPlayer(teamId, 6, PlayerPosition.dm, 75, 80, 70, 80, 70, 40),
+        _createPlayer(teamId, 7, PlayerPosition.cm, 75, 80, 75, 75, 75, 40),
+        _createPlayer(teamId, 8, PlayerPosition.cm, 75, 80, 75, 75, 75, 40),
+        _createPlayer(teamId, 9, PlayerPosition.rw, 90, 75, 80, 60, 85, 40),
+        _createPlayer(teamId, 10, PlayerPosition.lw, 90, 75, 80, 60, 85, 40),
+        _createPlayer(teamId, 11, PlayerPosition.st, 95, 75, 85, 60, 80, 40),
+      ],
+    );
+  }
+
+  PlayerInTeamModel _createPlayer(
+    String teamId,
+    int number,
+    PlayerPosition position,
+    double maxSpeed,
+    double lowPass,
+    double shoots,
+    double defence,
+    double dribbling,
+    double goalkeeper,
+  ) {
+    return PlayerInTeamModel(
+      teamId: teamId,
+      number: number,
+      position: position,
+      data: PlayerModel(
+        id: "$teamId-$number",
+        name: "$number",
+        usualPosition: position,
+        stats: PlayerStats(
+          maxSpeed: maxSpeed,
+          lowPass: lowPass,
+          shoots: shoots,
+          defence: defence,
+          dribbling: dribbling,
+          goalkeeper: goalkeeper,
+        ),
+      ),
+    );
   }
 
   void _positionTeams() {
@@ -375,11 +177,11 @@ class MatchGame extends FlameGame {
     final teamBplayers = players.where((p) => p.pit.teamId == teamB.id).toList();
 
     if (isTeamOnLeftSide(teamA.id)) {
-      _positionTeam(teamAplayers, 100); // Team A слева
-      _positionTeam(teamBplayers, size.x - 100); // Team B справа
+      _positionTeam(teamAplayers, 100); // Team A on left
+      _positionTeam(teamBplayers, size.x - 100); // Team B on right
     } else {
-      _positionTeam(teamBplayers, 100); // Team B слева
-      _positionTeam(teamAplayers, size.x - 100); // Team A справа
+      _positionTeam(teamBplayers, 100); // Team B on left
+      _positionTeam(teamAplayers, size.x - 100); // Team A on right
     }
   }
 
@@ -391,8 +193,8 @@ class MatchGame extends FlameGame {
   }
 
   void _linkPlayersToBall() {
-    for (final p in players) {
-      p.assignBallRef(ball);
+    for (final player in players) {
+      player.assignBallRef(ball);
     }
     ball.assignPlayers(players);
   }
@@ -405,33 +207,31 @@ class MatchGame extends FlameGame {
     ball.velocity = Vector2.zero();
   }
 
+  // Game state management
   @override
   void update(double dt) {
     super.update(dt);
 
-    if (gameState == GameState.finished) {
-      return; // Полная остановка обновлений при завершении игры
-    } // В MatchGame.update заменить проверку окончания
-    else if (gameState == GameState.secondHalf && elapsedTime >= 2 * halftimeDuration) {
-      finishGame(); // Используем новый метод вместо прямого изменения состояния
-      return;
-    }
+    if (gameState == GameState.finished) return;
 
+    _updateGameTime(dt);
+    _checkGamePhaseTransitions();
+    _updateActiveGameState();
+  }
+
+  void _updateGameTime(double dt) {
     elapsedTime += dt;
+  }
 
-    // Check for halftime transition
+  void _checkGamePhaseTransitions() {
     if (gameState == GameState.firstHalf && elapsedTime >= halftimeDuration) {
-      gameState = GameState.halftime;
       _handleHalftime();
+    } else if (gameState == GameState.secondHalf && elapsedTime >= 2 * halftimeDuration) {
+      _finishGame();
     }
-    // Check for second half end
-    else if (gameState == GameState.secondHalf && elapsedTime >= 2 * halftimeDuration) {
-      gameState = GameState.finished;
-      print('🏁 Match finished! Final score: ${teamA.name} $teamAscore : $teamBscore ${teamB.name}');
-      return;
-    }
+  }
 
-    // Only update game logic during active halves
+  void _updateActiveGameState() {
     if (gameState == GameState.firstHalf || gameState == GameState.secondHalf) {
       _checkGoals();
       _clampComponentsToField();
@@ -439,62 +239,67 @@ class MatchGame extends FlameGame {
   }
 
   void _handleHalftime() {
+    gameState = GameState.halftime;
     print('🕒 Halftime! Teams will swap sides.');
-    // Reset positions and ball for second half
     _resetForSecondHalf();
   }
 
   void _resetForSecondHalf() {
     gameState = GameState.secondHalf;
-    // Reset ball to center
+    _resetBallPosition();
+    _resetPlayersPositions();
+    _assignNewBallOwnerAfterHalftime();
+  }
+
+  void _resetBallPosition() {
     ball.position = size / 2;
     ball.velocity = Vector2.zero();
+  }
 
-    // Clear ball ownership
-    // ball.takeOwnership(null);
-
-    // Reposition teams on opposite sides
-    _resetPlayersPositions();
-    // Assign new ball owner randomly
+  void _assignNewBallOwnerAfterHalftime() {
     final firstOwner = players.random(random);
     ball.takeOwnership(firstOwner);
     final directionToCenter = (size / 2 - firstOwner.position).normalized();
     ball.position = firstOwner.position + directionToCenter * (firstOwner.radius + ball.radius + 1);
   }
 
-  void _checkGoals() {
-    // Мяч в левом голе
-    if (leftGoal.isGoal(ball.position)) {
-      final scoringTeam = isTeamOnLeftSide(teamA.id) ? teamB : teamA;
-      _handleGoal(scoringTeam.id);
+  void _finishGame() {
+    gameState = GameState.finished;
+    _stopAllMovement();
+    print('🏁 Match finished! Final score: ${teamA.name} $teamAscore : $teamBscore ${teamB.name}');
+  }
+
+  void _stopAllMovement() {
+    ball.velocity = Vector2.zero();
+    for (final player in players) {
+      player.velocity = Vector2.zero();
     }
-    // Мяч в правом голе
-    else if (rightGoal.isGoal(ball.position)) {
-      final scoringTeam = isTeamOnLeftSide(teamA.id) ? teamA : teamB;
-      _handleGoal(scoringTeam.id);
+  }
+
+  // Goal management
+  void _checkGoals() {
+    if (leftGoal.isGoal(ball.position)) {
+      _handleGoal(isTeamOnLeftSide(teamA.id) ? teamB.id : teamA.id);
+    } else if (rightGoal.isGoal(ball.position)) {
+      _handleGoal(isTeamOnLeftSide(teamA.id) ? teamA.id : teamB.id);
     }
   }
 
   void _handleGoal(String scoringTeamId) {
     print('⚽️ GOAL for Team $scoringTeamId!');
+
     if (scoringTeamId == teamA.id) {
       teamAscore++;
     } else {
       teamBscore++;
     }
-    resetAfterGoal(scoringTeamId: scoringTeamId);
-  }
 
-  void _clampComponentsToField() {
-    for (final c in children.whereType<PositionComponent>()) {
-      c.position.x = c.position.x.clamp(0.0, size.x);
-      c.position.y = c.position.y.clamp(0.0, size.y);
-    }
+    resetAfterGoal(scoringTeamId: scoringTeamId);
   }
 
   void resetAfterGoal({required String scoringTeamId}) {
     _resetPlayersPositions();
-    _assignNewBallOwner(scoringTeamId);
+    _assignNewBallOwnerAfterGoal(scoringTeamId);
   }
 
   void _resetPlayersPositions() {
@@ -502,15 +307,15 @@ class MatchGame extends FlameGame {
     final teamBplayers = players.where((p) => p.pit.teamId == teamB.id).toList();
 
     if (isTeamOnLeftSide(teamA.id)) {
-      _positionTeam(teamAplayers, 100); // Team A слева
-      _positionTeam(teamBplayers, size.x - 100); // Team B справа
+      _positionTeam(teamAplayers, 100);
+      _positionTeam(teamBplayers, size.x - 100);
     } else {
-      _positionTeam(teamBplayers, 100); // Team B слева
-      _positionTeam(teamAplayers, size.x - 100); // Team A справа
+      _positionTeam(teamBplayers, 100);
+      _positionTeam(teamAplayers, size.x - 100);
     }
   }
 
-  void _assignNewBallOwner(String scoringTeamId) {
+  void _assignNewBallOwnerAfterGoal(String scoringTeamId) {
     final opposingTeamPlayers = players.where((p) => p.pit.teamId != scoringTeamId).toList();
     final newOwner = opposingTeamPlayers[random.nextInt(opposingTeamPlayers.length)];
     ball.takeOwnership(newOwner);
@@ -519,14 +324,28 @@ class MatchGame extends FlameGame {
     ball.position = newOwner.position + directionToCenter * (newOwner.radius + ball.radius + 1);
   }
 
-  void finishGame() {
-    gameState = GameState.finished;
-    // Остановить мяч
-    ball.velocity = Vector2.zero();
-    // Остановить всех игроков
-    for (final player in players) {
-      player.velocity = Vector2.zero();
+  void _clampComponentsToField() {
+    for (final component in children.whereType<PositionComponent>()) {
+      component.position.x = component.position.x.clamp(0.0, size.x);
+      component.position.y = component.position.y.clamp(0.0, size.y);
     }
-    print('Матч завершен! Финальный счет: ${teamA.name} $teamAscore : $teamBscore ${teamB.name}');
+  }
+
+  // Utility methods
+  Vector2 getGoalPositionForTeam(String teamId) {
+    return isTeamOnLeftSide(teamId) ? rightGoal.center : leftGoal.center;
+  }
+
+  bool isTeamOnLeftSide(String teamId) {
+    final isFirstHalf = gameState == GameState.firstHalf;
+    return teamId == teamA.id ? isFirstHalf : !isFirstHalf;
+  }
+
+  bool isOwnHalf(String teamId, Vector2 position) {
+    final fieldMiddle = size.x / 2;
+    final isTeamAOnLeft = gameState == GameState.firstHalf;
+    final isOnLeftSide = position.x < fieldMiddle;
+
+    return (teamId == teamA.id) ? (isTeamAOnLeft == isOnLeftSide) : (isTeamAOnLeft != isOnLeftSide);
   }
 }

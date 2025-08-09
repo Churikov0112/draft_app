@@ -27,50 +27,42 @@ final Map<PlayerPosition, Offset> basePositions = {
   PlayerPosition.st: Offset(0.75, 0.55),
 };
 
-/// Компонент игрока
 class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
-  // Константы
-  static const double playerRadius = 14.0;
-  static const double stealCooldown = 2.0;
-  static const double passCooldown = 2.0;
+  // Constants
+  final double radius = 14.0;
+  final double stealCooldown = 2.0;
+  final double passCooldown = 2.0;
 
+  // Player properties
   final PlayerInTeamModel pit;
-
-  double radius = playerRadius;
   Vector2 velocity = Vector2.zero();
   BallComponent? ball;
 
-  // Таймеры
+  // Timers
   double _lastStealTime = 0;
   double _lastPassTime = 0;
-
   double _dt = 0;
 
-  // Позиционирование
+  // Positioning
   Vector2 desiredPosition = Vector2.zero();
   double positionUpdateTimer = 0.0;
   double positionUpdateInterval = 3.0;
 
-  // Новые параметры
+  // State
   double fatigue = 0.0;
   TeamState teamState = TeamState.neutral;
   double microMoveTimer = 0.0;
 
-  PlayerComponent({required this.pit, Vector2? position})
-    : super(position: position ?? Vector2.zero(), size: Vector2.all(playerRadius * 2)) {
+  PlayerComponent({required this.pit}) {
     desiredPosition = Vector2.zero();
+    position = Vector2.zero();
+    size = Vector2.all(radius * 2);
   }
 
-  void assignBallRef(BallComponent b) => ball = b;
-
-  bool _isAttackingTeam() => ball?.owner?.pit.teamId == pit.teamId;
-
-  bool _isOnOwnHalf() => gameRef.isOwnHalf(pit.teamId, position);
-
+  // Core methods
   @override
   void update(double dt) {
     super.update(dt);
-    // Полная остановка если матч завершен
     if (gameRef.gameState == GameState.finished) {
       velocity = Vector2.zero();
       return;
@@ -80,19 +72,26 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     if (ball == null) return;
 
     _updateTeamState();
-
-    positionUpdateTimer -= dt;
-    if (positionUpdateTimer <= 0) {
-      _updateDesiredPosition();
-      positionUpdateTimer = positionUpdateInterval + gameRef.random.nextDouble() * 2.0;
-    }
-
-    _applyMicroAdjustments(dt);
-
+    _updatePositioning(dt);
     _handleBallInteraction();
     _clampPosition();
   }
 
+  @override
+  void render(Canvas canvas) {
+    _renderShadow(canvas);
+    _renderPlayerOutline(canvas);
+    _renderPlayerFill(canvas);
+    _renderPlayerNumber(canvas);
+  }
+
+  // Ball control methods
+  void assignBallRef(BallComponent b) => ball = b;
+
+  bool _isAttackingTeam() => ball?.owner?.pit.teamId == pit.teamId;
+  bool _isOnOwnHalf() => gameRef.isOwnHalf(pit.teamId, position);
+
+  // State management
   void _updateTeamState() {
     final ballOwnerTeam = ball?.owner?.pit.teamId;
     if (ballOwnerTeam == pit.teamId) {
@@ -100,11 +99,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     } else if (ballOwnerTeam == null) {
       teamState = TeamState.neutral;
     } else {
-      if (_isCounterAttackOpportunity()) {
-        teamState = TeamState.counter;
-      } else {
-        teamState = TeamState.defence;
-      }
+      teamState = _isCounterAttackOpportunity() ? TeamState.counter : TeamState.defence;
     }
   }
 
@@ -113,6 +108,35 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final isInMiddle = ballPos.x > gameRef.size.x * 0.3 && ballPos.x < gameRef.size.x * 0.7;
     final hasFastPlayers = pit.data.stats.maxSpeed > 70;
     return isInMiddle && hasFastPlayers;
+  }
+
+  // Positioning logic
+  void _updatePositioning(double dt) {
+    positionUpdateTimer -= dt;
+    if (positionUpdateTimer <= 0) {
+      _updateDesiredPosition();
+      positionUpdateTimer = positionUpdateInterval + gameRef.random.nextDouble() * 2.0;
+    }
+    _applyMicroAdjustments(dt);
+  }
+
+  void _updateDesiredPosition() {
+    final attacking = _isAttackingTeam();
+    final distToBall = (ball!.position - position).length;
+    final secondsAhead = (0.5 + (distToBall / gameRef.size.x).clamp(0.0, 1.0)) * (attacking ? 1.0 : 0.6);
+    final predictedBallPos = predictBallPosition(secondsAhead);
+    final basePos = getHomePosition();
+    final attackShift = _calculateTacticalShift(predictedBallPos, attacking);
+    final randomShift = _calculateRandomPositionShift(attacking);
+    desiredPosition = basePos + attackShift + randomShift;
+    desiredPosition = _avoidNearbyOpponents(desiredPosition);
+  }
+
+  Vector2 predictBallPosition(double secondsAhead) {
+    if (ball == null) return Vector2.zero();
+    return ball!.owner != null
+        ? ball!.position + ball!.owner!.velocity * secondsAhead
+        : ball!.position + ball!.velocity * secondsAhead;
   }
 
   void _applyMicroAdjustments(double dt) {
@@ -124,28 +148,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     }
   }
 
-  void _updateDesiredPosition() {
-    final attacking = _isAttackingTeam();
-    final distToBall = (ball!.position - position).length;
-    final secondsAhead = (0.5 + (distToBall / (gameRef.size.x)).clamp(0.0, 1.0)) * (attacking ? 1.0 : 0.6);
-    final predictedBallPos = predictBallPosition(secondsAhead);
-    final basePos = getHomePosition();
-    final attackShift = _calculateTacticalShift(predictedBallPos, attacking);
-    final randomShift = _calculateRandomPositionShift(attacking);
-    desiredPosition = basePos + attackShift + randomShift;
-    desiredPosition = _avoidNearbyOpponents(desiredPosition);
-  }
-
-  Vector2 predictBallPosition(double secondsAhead) {
-    if (ball == null) return Vector2.zero();
-    if (ball!.owner != null) {
-      final owner = ball!.owner!;
-      return ball!.position + owner.velocity * secondsAhead;
-    } else {
-      return ball!.position + ball!.velocity * secondsAhead;
-    }
-  }
-
+  // Ball interaction logic
   void _handleBallInteraction() {
     final dirToBall = ball!.position - position;
     final distToBall = dirToBall.length;
@@ -159,20 +162,56 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     }
   }
 
-  String _getFieldZone(Vector2 position, Vector2 goalPos, double fieldLength) {
+  void _handleBallPossession({required double time}) {
+    final goal = _getOpponentGoal();
+    final goalPos = goal.center;
     final distToGoal = (goalPos - position).length;
-    final attackingZoneThreshold = fieldLength * 0.3;
-    final defensiveZoneThreshold = fieldLength * 0.7;
+    final fieldZone = _getFieldZone(position, goalPos, gameRef.size.x);
 
-    if (distToGoal < attackingZoneThreshold) {
-      return 'attacking';
-    } else if (distToGoal > defensiveZoneThreshold) {
-      return 'defensive';
+    if (distToGoal < 30 && !_isThreatened(goal)) {
+      _shootAtGoal(goalPos, time);
+      return;
+    }
+
+    final passScore = _calculatePassScore(time, goal, fieldZone);
+    final dribbleScore = _calculateDribbleScore(goal, fieldZone);
+    final shootScore = _calculateShootScore(distToGoal, fieldZone);
+
+    final bestAction = _selectBestAction(passScore, dribbleScore, shootScore, goal);
+
+    if (bestAction == 'pass' && !_randomSkipPassDecision()) {
+      if (_attemptPass(time)) return;
+    }
+
+    if (bestAction == 'shoot') {
+      _shootAtGoal(goalPos, time);
+      return;
+    }
+
+    if (distToGoal < 10) {
+      _shootAtGoal(goalPos, time);
+      return;
+    }
+
+    _moveWithBall((goalPos - position).normalized());
+  }
+
+  void _handleBallChasing({required double time, required double distToBall, required Vector2 dirToBall}) {
+    final isBallFree = ball!.owner == null;
+    final isOpponentOwner = ball!.owner != null && ball!.owner!.pit.teamId != pit.teamId;
+
+    if (isBallFree || isOpponentOwner) {
+      if (_isDesignatedPresser() || _isSupportPresser(distToBall)) {
+        _pressBall(time, distToBall, dirToBall);
+      } else {
+        _moveToOpenSpace();
+      }
     } else {
-      return 'middle';
+      _moveToOpenSpace();
     }
   }
 
+  // Action decision methods
   String _selectBestAction(double passScore, double dribbleScore, double shootScore, GoalComponent goal) {
     final randomFactor = gameRef.random.nextDouble();
     if (randomFactor < 0.02) {
@@ -180,7 +219,6 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
       return actions[gameRef.random.nextInt(actions.length)];
     }
 
-    // Приоритет пасу, если есть тиммейт ближе к воротам
     final teammate = _findBestTeammate();
     if (teammate != null) {
       final goalDistNow = (goal.center - position).length;
@@ -193,227 +231,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     return 'dribble';
   }
 
-  void _handleBallPossession({required double time}) {
-    final goal = _getOpponentGoal();
-    final goalPos = goal.center;
-    final distToGoal = (goalPos - position).length;
-    final fieldZone = _getFieldZone(position, goalPos, gameRef.size.x);
-
-    // Приоритет удара, если близко к воротам и нет угрозы
-    if (distToGoal < 30 && !_isThreatened(goal)) {
-      _shootAtGoal(goalPos, time);
-      return;
-    }
-
-    final passScore = _calculatePassScore(time, goal, fieldZone);
-    final dribbleScore = _calculateDribbleScore(goal, fieldZone);
-    final shootScore = _calculateShootScore(distToGoal, fieldZone);
-
-    final bestAction = _selectBestAction(passScore, dribbleScore, shootScore, goal); // Передаем goal
-
-    if (bestAction == 'pass' && !_randomSkipPassDecision()) {
-      if (_attemptPass(time)) {
-        return;
-      }
-    }
-
-    if (bestAction == 'shoot') {
-      _shootAtGoal(goalPos, time);
-      return;
-    }
-
-    // Остановить дриблинг, если слишком близко к воротам
-    if (distToGoal < 10) {
-      _shootAtGoal(goalPos, time);
-      return;
-    }
-
-    _moveWithBall((goalPos - position).normalized());
-  }
-
-  double _calculatePassScore(double time, GoalComponent goal, String fieldZone) {
-    if (!_shouldPass(time)) return -1.0;
-
-    final teammate = _findBestTeammate();
-    if (teammate == null) return -1.0;
-
-    final passTarget = _calculatePassTarget(teammate);
-    if (!_isPassSafe(position, passTarget)) return -1.0;
-
-    double zoneWeight;
-    switch (fieldZone) {
-      case 'defensive':
-        zoneWeight = 0.95;
-        break;
-      case 'middle':
-        zoneWeight = 0.75;
-        break;
-      case 'attacking':
-        zoneWeight = 0.4;
-        break;
-      default:
-        zoneWeight = 0.5;
-    }
-
-    double roleModifier;
-    switch (pit.position) {
-      case PlayerPosition.cb:
-      case PlayerPosition.lb:
-      case PlayerPosition.rb:
-        roleModifier = 1.2;
-        break;
-      case PlayerPosition.dm:
-      case PlayerPosition.cm:
-      case PlayerPosition.am:
-      case PlayerPosition.lm:
-      case PlayerPosition.rm:
-        roleModifier = 1.0;
-        break;
-      case PlayerPosition.ss:
-      case PlayerPosition.st:
-      case PlayerPosition.lw:
-      case PlayerPosition.rw:
-      case PlayerPosition.cf:
-        roleModifier = 0.8;
-        break;
-      default:
-        roleModifier = 1.0;
-    }
-
-    final isThreatened = _isThreatened(goal);
-    final threatFactor = isThreatened ? 1.2 : 1.0;
-    final passSkill = pit.data.stats.lowPass / 100;
-    final goalDistNow = (goal.center - position).length;
-    final goalDistThen = (goal.center - teammate.position).length;
-    final progressScore = goalDistThen < goalDistNow ? 1.0 : 0.5;
-
-    return zoneWeight * roleModifier * (0.4 * passSkill + 0.3 * progressScore + 0.3 * threatFactor);
-  }
-
-  double _calculateDribbleScore(GoalComponent goal, String fieldZone) {
-    final isThreatened = _isThreatened(goal);
-    final dribblingSkill = pit.data.stats.dribbling / 100;
-
-    double zoneWeight;
-    switch (fieldZone) {
-      case 'defensive':
-        zoneWeight = 0.2;
-        break;
-      case 'middle':
-        zoneWeight = 0.65;
-        break;
-      case 'attacking':
-        zoneWeight = 0.8;
-        break;
-      default:
-        zoneWeight = 0.5;
-    }
-
-    double roleModifier;
-    switch (pit.position) {
-      case PlayerPosition.cb:
-        roleModifier = 0.6;
-        break;
-      case PlayerPosition.lb:
-      case PlayerPosition.rb:
-        roleModifier = 0.8;
-        break;
-      case PlayerPosition.dm:
-      case PlayerPosition.cm:
-      case PlayerPosition.am:
-        roleModifier = 1.0;
-        break;
-      case PlayerPosition.lm:
-      case PlayerPosition.rm:
-      case PlayerPosition.lw:
-      case PlayerPosition.rw:
-        roleModifier = 1.4;
-        break;
-      case PlayerPosition.ss:
-      case PlayerPosition.st:
-      case PlayerPosition.cf:
-        roleModifier = 1.2;
-        break;
-      default:
-        roleModifier = 1.0;
-    }
-
-    final threatFactor = isThreatened ? 0.7 : 1.0;
-
-    return zoneWeight * roleModifier * (0.6 * dribblingSkill + 0.4 * threatFactor);
-  }
-
-  double _calculateShootScore(double distToGoal, String fieldZone) {
-    final shootThreshold = 200.0; // Увеличено с 150
-    if (_isOnOwnHalf() || distToGoal > shootThreshold) return -1.0;
-
-    double zoneWeight;
-    switch (fieldZone) {
-      case 'defensive':
-        zoneWeight = 0.0;
-        break;
-      case 'middle':
-        zoneWeight = 0.05;
-        break;
-      case 'attacking':
-        zoneWeight = distToGoal < 50 ? 1.2 : 0.9; // Бонус для ближних ударов
-        break;
-      default:
-        zoneWeight = 0.5;
-    }
-
-    double roleModifier;
-    switch (pit.position) {
-      case PlayerPosition.cb:
-        roleModifier = 0.4;
-        break;
-      case PlayerPosition.rb:
-      case PlayerPosition.lb:
-        roleModifier = 0.5;
-        break;
-      case PlayerPosition.cm:
-      case PlayerPosition.dm:
-      case PlayerPosition.am:
-        roleModifier = 0.9;
-        break;
-      case PlayerPosition.lw:
-      case PlayerPosition.rw:
-      case PlayerPosition.rm:
-      case PlayerPosition.lm:
-        roleModifier = 1.1;
-        break;
-      case PlayerPosition.ss:
-      case PlayerPosition.st:
-      case PlayerPosition.cf:
-        roleModifier = 1.3;
-        break;
-      default:
-        roleModifier = 1.0;
-    }
-
-    final shootSkill = pit.data.stats.shoots / 100;
-    final distanceFactor = pow(1.0 - (distToGoal / shootThreshold), 2); // Квадратичный штраф
-    final threatFactor = _isThreatened(_getOpponentGoal()) ? 0.8 : 1.5; // Бонус без угрозы
-
-    return zoneWeight * roleModifier * (0.5 * shootSkill + 0.3 * distanceFactor + 0.2 * threatFactor);
-  }
-
-  bool _shouldPass(double time) {
-    return (time - _lastPassTime) > passCooldown && _isThreatened(_getOpponentGoal());
-  }
-
-  bool _isThreatened(GoalComponent goal) {
-    final dirToGoal = (goal.center - position).normalized();
-    return gameRef.players.any((enemy) => enemy.pit.teamId != pit.teamId && _isInThreatZone(enemy, dirToGoal));
-  }
-
-  bool _isInThreatZone(PlayerComponent enemy, Vector2 dirToGoal) {
-    final toEnemy = enemy.position - position;
-    final projection = toEnemy.dot(dirToGoal);
-    final perpendicularDist = (toEnemy - dirToGoal * projection).length;
-    return projection > 0 && projection < 150 && perpendicularDist < 25;
-  }
-
+  // Pass related methods
   bool _attemptPass(double time) {
     final teammate = _findBestTeammate();
     if (teammate == null) return false;
@@ -442,8 +260,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   Vector2 _calculatePassTarget(PlayerComponent teammate) {
     final leadFactor = 0.2 + 0.5 * (pit.data.stats.lowPass / 100);
     Vector2 predictedPos = teammate.position + (teammate.velocity * leadFactor);
-    final freeSpot = _findFreeZoneNear(predictedPos);
-    return freeSpot;
+    return _findFreeZoneNear(predictedPos);
   }
 
   Vector2 _findFreeZoneNear(Vector2 pos, {double radius = 50, int attempts = 10}) {
@@ -464,6 +281,27 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     return (basePower * (0.9 + 0.2 * passSkill)).clamp(200.0, 800.0);
   }
 
+  // Shoot related methods
+  void _shootAtGoal(Vector2 goalPos, double time) {
+    final distToGoal = (goalPos - position).length;
+    final shootSkill = pit.data.stats.shoots / 100;
+    final goalHeight = 60.0;
+    final verticalSpread = goalHeight * 0.5 * (1 - shootSkill);
+    final fatigueFactor = 1.0 + fatigue * 0.5;
+    final dy = (gameRef.random.nextDouble() - 0.5) * 2 * verticalSpread * fatigueFactor;
+    final noisyGoal = goalPos + Vector2(0, dy);
+
+    final minPower = 400.0;
+    final maxPower = 1000.0;
+    final distFactor = (distToGoal / 500).clamp(0.0, 1.0);
+    final power = minPower + (maxPower - minPower) * distFactor * (0.7 + 0.3 * shootSkill);
+
+    if (!_isShotSafe(position, noisyGoal, ballSpeed: power)) return;
+
+    ball!.kickTowards(noisyGoal, power, time, this);
+  }
+
+  // Movement methods
   void _moveWithBall(Vector2 dirToGoal, {double? speedFactor}) {
     if (gameRef.gameState == GameState.finished) {
       velocity = Vector2.zero();
@@ -487,129 +325,6 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     return (dirToGoal + perpendicular * evadeStrength).normalized();
   }
 
-  void _shootAtGoal(Vector2 goalPos, double time) {
-    final distToGoal = (goalPos - position).length;
-    final fieldZone = _getFieldZone(position, goalPos, gameRef.size.x);
-    final shootSkill = pit.data.stats.shoots / 100;
-    final goalHeight = 60.0;
-    final verticalSpread = goalHeight * 0.5 * (1 - shootSkill);
-    final fatigueFactor = 1.0 + fatigue * 0.5;
-    final dy = (gameRef.random.nextDouble() - 0.5) * 2 * verticalSpread * fatigueFactor;
-    final noisyGoal = goalPos + Vector2(0, dy);
-
-    final minPower = 400.0;
-    final maxPower = 1000.0;
-    final distFactor = (distToGoal / 500).clamp(0.0, 1.0);
-    final power = minPower + (maxPower - minPower) * distFactor * (0.7 + 0.3 * shootSkill);
-
-    if (!_isShotSafe(position, noisyGoal, ballSpeed: power)) return;
-
-    ball!.kickTowards(noisyGoal, power, time, this);
-  }
-
-  bool _isShotSafe(Vector2 from, Vector2 to, {required double ballSpeed}) {
-    const double baseTolerance = 18.0;
-    return !gameRef.players.any(
-      (enemy) =>
-          enemy.pit.teamId != pit.teamId && _isInInterceptionZone(enemy, from, to, baseTolerance, ballSpeed: ballSpeed),
-    );
-  }
-
-  void _handleBallChasing({required double time, required double distToBall, required Vector2 dirToBall}) {
-    final isBallFree = ball!.owner == null;
-    final isOpponentOwner = ball!.owner != null && ball!.owner!.pit.teamId != pit.teamId;
-
-    if (isBallFree || isOpponentOwner) {
-      if (_isDesignatedPresser() || _isSupportPresser(distToBall)) {
-        _pressBall(time, distToBall, dirToBall);
-      } else {
-        _moveToOpenSpace();
-      }
-    } else {
-      _moveToOpenSpace();
-    }
-  }
-
-  bool _isDesignatedPresser() {
-    final sameTeam = gameRef.players.where((p) => p.pit.teamId == pit.teamId).toList();
-    sameTeam.sort((a, b) => (a.position - ball!.position).length.compareTo((b.position - ball!.position).length));
-    for (final p in sameTeam) {
-      if (p._canPress()) return identical(this, p);
-    }
-    return false;
-  }
-
-  bool _isSupportPresser(double distToBall) {
-    final nearbyAllies = gameRef.players
-        .where((p) => p.pit.teamId == pit.teamId && (p.position - position).length < 50)
-        .length;
-    return distToBall < 50 && nearbyAllies > 1; // Групповой прессинг
-  }
-
-  bool _canPress() {
-    final ballPos = ball?.position ?? Vector2.zero();
-    final dist = (position - ballPos).length;
-    final isOwnHalf = gameRef.isOwnHalf(pit.teamId, position);
-    final randomChance = gameRef.random.nextDouble();
-
-    double pressThreshold;
-    switch (pit.position) {
-      case PlayerPosition.cb:
-        pressThreshold = 0.5;
-        break;
-      case PlayerPosition.rb:
-      case PlayerPosition.lb:
-        pressThreshold = 0.4;
-        break;
-      case PlayerPosition.dm:
-        pressThreshold = 0.4;
-        break;
-      case PlayerPosition.cm:
-      case PlayerPosition.am:
-        pressThreshold = 0.3;
-        break;
-      case PlayerPosition.lm:
-      case PlayerPosition.rm:
-        pressThreshold = 0.25;
-        break;
-      case PlayerPosition.lw:
-      case PlayerPosition.rw:
-        pressThreshold = 0.15;
-        break;
-      case PlayerPosition.ss:
-      case PlayerPosition.st:
-      case PlayerPosition.cf:
-        pressThreshold = 0.1;
-        break;
-      default:
-        pressThreshold = 0.3;
-    }
-
-    if (randomChance < pressThreshold) return true;
-
-    switch (pit.position) {
-      case PlayerPosition.cb:
-      case PlayerPosition.rb:
-      case PlayerPosition.lb:
-        return true;
-      case PlayerPosition.dm:
-      case PlayerPosition.cm:
-      case PlayerPosition.am:
-        return isOwnHalf || dist < 200;
-      case PlayerPosition.lm:
-      case PlayerPosition.rm:
-        return isOwnHalf || dist < 180;
-      case PlayerPosition.lw:
-      case PlayerPosition.rw:
-      case PlayerPosition.ss:
-      case PlayerPosition.st:
-      case PlayerPosition.cf:
-        return dist < 150;
-      default:
-        return false;
-    }
-  }
-
   void _pressBall(double time, double distToBall, Vector2 dirToBall) {
     if (gameRef.gameState == GameState.finished) {
       velocity = Vector2.zero();
@@ -625,7 +340,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final extendedReach = radius + ball!.radius + 2 + 10 * defenceSkill;
     final ballOwner = ball!.owner;
     final dribblingSkill = (ballOwner?.pit.data.stats.dribbling ?? 0) / 100;
-    final possessionDuration = time - ball!.lastOwnershipTime; // Требуется поле в BallComponent
+    final possessionDuration = time - ball!.lastOwnershipTime;
     final timePenalty = possessionDuration > 5 ? 0.2 * (possessionDuration / 5) : 0;
     final stealChance = (defenceSkill - dribblingSkill + 1.0) / 2.0 + timePenalty;
 
@@ -643,12 +358,13 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
       velocity = Vector2.zero();
       return;
     }
+
     final toTarget = desiredPosition - position;
     if (toTarget.length > 4) {
       final speed = _isAttackingTeam() ? pit.data.stats.maxSpeed * 0.6 : pit.data.stats.maxSpeed * 0.4;
       velocity = toTarget.normalized() * speed;
       position += velocity * _dt;
-      // Избегать пересечения с тиммейтами
+
       final nearbyTeammates = gameRef.players.where(
         (p) => p.pit.teamId == pit.teamId && p != this && (p.position - position).length < 30,
       );
@@ -661,6 +377,65 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     }
   }
 
+  // Helper methods
+  String _getFieldZone(Vector2 position, Vector2 goalPos, double fieldLength) {
+    final distToGoal = (goalPos - position).length;
+    final attackingZoneThreshold = fieldLength * 0.3;
+    final defensiveZoneThreshold = fieldLength * 0.7;
+
+    if (distToGoal < attackingZoneThreshold) return 'attacking';
+    if (distToGoal > defensiveZoneThreshold) return 'defensive';
+    return 'middle';
+  }
+
+  bool _isThreatened(GoalComponent goal) {
+    final dirToGoal = (goal.center - position).normalized();
+    return gameRef.players.any((enemy) => enemy.pit.teamId != pit.teamId && _isInThreatZone(enemy, dirToGoal));
+  }
+
+  bool _isInThreatZone(PlayerComponent enemy, Vector2 dirToGoal) {
+    final toEnemy = enemy.position - position;
+    final projection = toEnemy.dot(dirToGoal);
+    final perpendicularDist = (toEnemy - dirToGoal * projection).length;
+    return projection > 0 && projection < 150 && perpendicularDist < 25;
+  }
+
+  bool _isShotSafe(Vector2 from, Vector2 to, {required double ballSpeed}) {
+    const double baseTolerance = 18.0;
+    return !gameRef.players.any(
+      (enemy) =>
+          enemy.pit.teamId != pit.teamId && _isInInterceptionZone(enemy, from, to, baseTolerance, ballSpeed: ballSpeed),
+    );
+  }
+
+  bool _isPassSafe(Vector2 from, Vector2 to) {
+    final passSkill = pit.data.stats.lowPass / 100;
+    final adjustedTolerance = 15 + 10 * (1 - passSkill);
+    final hasTeammate = gameRef.players.any((p) => p.pit.teamId == pit.teamId && (p.position - to).length < 100);
+    if (!hasTeammate) return false;
+    return !gameRef.players.any(
+      (enemy) => enemy.pit.teamId != pit.teamId && _isInInterceptionZone(enemy, from, to, adjustedTolerance),
+    );
+  }
+
+  bool _isInInterceptionZone(
+    PlayerComponent enemy,
+    Vector2 from,
+    Vector2 to,
+    double tolerance, {
+    double ballSpeed = 400,
+  }) {
+    final toEnemy = enemy.position - from;
+    final toTarget = to - from;
+    final proj = toEnemy.dot(toTarget.normalized());
+    if (proj < 0 || proj > toTarget.length) return false;
+    final perpendicular = toEnemy - toTarget.normalized() * proj;
+    final speedFactor = (1 / (ballSpeed / 400)).clamp(0.3, 1.0);
+    final dynamicTolerance = tolerance * speedFactor;
+    return perpendicular.length < dynamicTolerance;
+  }
+
+  // Position calculation methods
   Vector2 _calculateTacticalShift(Vector2 ballPos, bool attacking) {
     final fieldLength = gameRef.size.x;
     final fieldWidth = gameRef.size.y;
@@ -669,7 +444,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final nearbyEnemies = gameRef.players
         .where((p) => p.pit.teamId != pit.teamId && (p.position - ballPos).length < 50)
         .length;
-    final crowdFactor = nearbyEnemies > 3 ? 0.5 : 1.0; // Штраф за толпу
+    final crowdFactor = nearbyEnemies > 3 ? 0.5 : 1.0;
     final multiplier = attacking ? (teamState == TeamState.counter ? 1.4 : 1.0) : 0.3;
     return Vector2(attackBiasX * multiplier * crowdFactor, sideBiasY * multiplier * crowdFactor);
   }
@@ -680,47 +455,11 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     double yShift = 0;
 
     final shiftChance = random.nextDouble();
-    double shiftThreshold;
-
-    switch (pit.position) {
-      case PlayerPosition.cb:
-        shiftThreshold = 0.2;
-        break;
-      case PlayerPosition.rb:
-      case PlayerPosition.lb:
-        shiftThreshold = 0.3;
-        break;
-      case PlayerPosition.dm:
-        shiftThreshold = 0.35;
-        break;
-      case PlayerPosition.cm:
-      case PlayerPosition.am:
-        shiftThreshold = 0.4;
-        break;
-      case PlayerPosition.lm:
-      case PlayerPosition.rm:
-        shiftThreshold = 0.45;
-        break;
-      case PlayerPosition.lw:
-      case PlayerPosition.rw:
-        shiftThreshold = 0.35;
-        break;
-      case PlayerPosition.ss:
-      case PlayerPosition.st:
-      case PlayerPosition.cf:
-        shiftThreshold = 0.15;
-        break;
-      default:
-        shiftThreshold = 0.3;
-    }
+    final shiftThreshold = _getPositionShiftThreshold();
 
     if (shiftChance < shiftThreshold) {
       final isTeamOnLeft = gameRef.isTeamOnLeftSide(pit.teamId);
-      if (attacking) {
-        xShift = isTeamOnLeft ? 100 : -100;
-      } else {
-        xShift = isTeamOnLeft ? -100 : 100;
-      }
+      xShift = attacking ? (isTeamOnLeft ? 100 : -100) : (isTeamOnLeft ? -100 : 100);
 
       final isWidePlayer = [
         PlayerPosition.rb,
@@ -733,33 +472,57 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
       final yRange = isWidePlayer ? 80 : 40;
       yShift = (random.nextDouble() - 0.5) * yRange;
-
-      double xShiftMultiplier;
-      switch (pit.position) {
-        case PlayerPosition.st:
-        case PlayerPosition.cf:
-        case PlayerPosition.ss:
-          xShiftMultiplier = 1.5;
-          break;
-        case PlayerPosition.lw:
-        case PlayerPosition.rw:
-          xShiftMultiplier = 1.2;
-          break;
-        case PlayerPosition.am:
-        case PlayerPosition.cm:
-          xShiftMultiplier = 1.0;
-          break;
-        case PlayerPosition.dm:
-        case PlayerPosition.cb:
-          xShiftMultiplier = 0.8;
-          break;
-        default:
-          xShiftMultiplier = 1.0;
-      }
-      xShift *= xShiftMultiplier;
+      xShift *= _getPositionShiftMultiplier();
     }
 
     return Vector2(xShift, yShift);
+  }
+
+  double _getPositionShiftThreshold() {
+    switch (pit.position) {
+      case PlayerPosition.cb:
+        return 0.2;
+      case PlayerPosition.rb:
+      case PlayerPosition.lb:
+        return 0.3;
+      case PlayerPosition.dm:
+        return 0.35;
+      case PlayerPosition.cm:
+      case PlayerPosition.am:
+        return 0.4;
+      case PlayerPosition.lm:
+      case PlayerPosition.rm:
+        return 0.45;
+      case PlayerPosition.lw:
+      case PlayerPosition.rw:
+        return 0.35;
+      case PlayerPosition.ss:
+      case PlayerPosition.st:
+      case PlayerPosition.cf:
+        return 0.15;
+      default:
+        return 0.3;
+    }
+  }
+
+  double _getPositionShiftMultiplier() {
+    switch (pit.position) {
+      case PlayerPosition.st:
+      case PlayerPosition.cf:
+      case PlayerPosition.ss:
+        return 1.5;
+      case PlayerPosition.lw:
+      case PlayerPosition.rw:
+        return 1.2;
+      case PlayerPosition.am:
+      case PlayerPosition.cm:
+        return 1.0;
+      case PlayerPosition.dm:
+      case PlayerPosition.cb:
+        return 0.8;
+      default:
+        return 1.0;
+    }
   }
 
   Vector2 _avoidNearbyOpponents(Vector2 target) {
@@ -773,6 +536,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     return target + avoidance;
   }
 
+  // Teammate selection methods
   PlayerComponent? _findBestTeammate() {
     final teammates = gameRef.players.where((p) => p.pit.teamId == pit.teamId && p != this);
     PlayerComponent? best;
@@ -784,7 +548,6 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     for (final t in teammates) {
       final score = _calculateTeammateScore(t, goalPos, goalDistNow);
       if (score > bestScore && score > 0.5) {
-        // Минимальный порог
         bestScore = score;
         best = t;
       }
@@ -820,43 +583,237 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     return nearest;
   }
 
-  bool _isPassSafe(Vector2 from, Vector2 to) {
+  // Pressing logic
+  bool _isDesignatedPresser() {
+    final sameTeam = gameRef.players.where((p) => p.pit.teamId == pit.teamId).toList();
+    sameTeam.sort((a, b) => (a.position - ball!.position).length.compareTo((b.position - ball!.position).length));
+    for (final p in sameTeam) {
+      if (p._canPress()) return identical(this, p);
+    }
+    return false;
+  }
+
+  bool _isSupportPresser(double distToBall) {
+    final nearbyAllies = gameRef.players
+        .where((p) => p.pit.teamId == pit.teamId && (p.position - position).length < 50)
+        .length;
+    return distToBall < 50 && nearbyAllies > 1;
+  }
+
+  bool _canPress() {
+    final ballPos = ball?.position ?? Vector2.zero();
+    final dist = (position - ballPos).length;
+    final isOwnHalf = gameRef.isOwnHalf(pit.teamId, position);
+    final randomChance = gameRef.random.nextDouble();
+
+    final pressThreshold = _getPressThreshold();
+    if (randomChance < pressThreshold) return true;
+
+    return _shouldPressBasedOnPosition(dist, isOwnHalf);
+  }
+
+  double _getPressThreshold() {
+    switch (pit.position) {
+      case PlayerPosition.cb:
+        return 0.5;
+      case PlayerPosition.rb:
+      case PlayerPosition.lb:
+        return 0.4;
+      case PlayerPosition.dm:
+        return 0.4;
+      case PlayerPosition.cm:
+      case PlayerPosition.am:
+        return 0.3;
+      case PlayerPosition.lm:
+      case PlayerPosition.rm:
+        return 0.25;
+      case PlayerPosition.lw:
+      case PlayerPosition.rw:
+        return 0.15;
+      case PlayerPosition.ss:
+      case PlayerPosition.st:
+      case PlayerPosition.cf:
+        return 0.1;
+      default:
+        return 0.3;
+    }
+  }
+
+  bool _shouldPressBasedOnPosition(double dist, bool isOwnHalf) {
+    switch (pit.position) {
+      case PlayerPosition.cb:
+      case PlayerPosition.rb:
+      case PlayerPosition.lb:
+        return true;
+      case PlayerPosition.dm:
+      case PlayerPosition.cm:
+      case PlayerPosition.am:
+        return isOwnHalf || dist < 200;
+      case PlayerPosition.lm:
+      case PlayerPosition.rm:
+        return isOwnHalf || dist < 180;
+      case PlayerPosition.lw:
+      case PlayerPosition.rw:
+      case PlayerPosition.ss:
+      case PlayerPosition.st:
+      case PlayerPosition.cf:
+        return dist < 150;
+      default:
+        return false;
+    }
+  }
+
+  // Score calculation methods
+  double _calculatePassScore(double time, GoalComponent goal, String fieldZone) {
+    if (!_shouldPass(time)) return -1.0;
+    final teammate = _findBestTeammate();
+    if (teammate == null) return -1.0;
+
+    final passTarget = _calculatePassTarget(teammate);
+    if (!_isPassSafe(position, passTarget)) return -1.0;
+
+    final zoneWeight = _getZoneWeight(fieldZone);
+    final roleModifier = _getRoleModifier();
+    final isThreatened = _isThreatened(goal);
+    final threatFactor = isThreatened ? 1.2 : 1.0;
     final passSkill = pit.data.stats.lowPass / 100;
-    final adjustedTolerance = 15 + 10 * (1 - passSkill); // Уменьшено с 25+20
-    final hasTeammate = gameRef.players.any((p) => p.pit.teamId == pit.teamId && (p.position - to).length < 100);
-    if (!hasTeammate) return false; // Нет тиммейтов рядом
-    return !gameRef.players.any(
-      (enemy) => enemy.pit.teamId != pit.teamId && _isInInterceptionZone(enemy, from, to, adjustedTolerance),
-    );
+    final goalDistNow = (goal.center - position).length;
+    final goalDistThen = (goal.center - teammate.position).length;
+    final progressScore = goalDistThen < goalDistNow ? 1.0 : 0.5;
+
+    return zoneWeight * roleModifier * (0.4 * passSkill + 0.3 * progressScore + 0.3 * threatFactor);
   }
 
-  bool _isInInterceptionZone(
-    PlayerComponent enemy,
-    Vector2 from,
-    Vector2 to,
-    double tolerance, {
-    double ballSpeed = 400,
-  }) {
-    final toEnemy = enemy.position - from;
-    final toTarget = to - from;
-    final proj = toEnemy.dot(toTarget.normalized());
-    if (proj < 0 || proj > toTarget.length) return false;
-    final perpendicular = toEnemy - toTarget.normalized() * proj;
-    final speedFactor = (1 / (ballSpeed / 400)).clamp(0.3, 1.0);
-    final dynamicTolerance = tolerance * speedFactor;
-    return perpendicular.length < dynamicTolerance;
+  double _calculateDribbleScore(GoalComponent goal, String fieldZone) {
+    final isThreatened = _isThreatened(goal);
+    final dribblingSkill = pit.data.stats.dribbling / 100;
+    final zoneWeight = _getZoneWeight(fieldZone);
+    final roleModifier = _getDribbleRoleModifier();
+    final threatFactor = isThreatened ? 0.7 : 1.0;
+    return zoneWeight * roleModifier * (0.6 * dribblingSkill + 0.4 * threatFactor);
   }
 
-  GoalComponent _getOpponentGoal() {
-    final isTeamOnLeft = gameRef.isTeamOnLeftSide(pit.teamId);
-    return isTeamOnLeft ? gameRef.rightGoal : gameRef.leftGoal;
+  double _calculateShootScore(double distToGoal, String fieldZone) {
+    final shootThreshold = 200.0;
+    if (_isOnOwnHalf() || distToGoal > shootThreshold) return -1.0;
+
+    final zoneWeight = _getShootZoneWeight(fieldZone, distToGoal);
+    final roleModifier = _getShootRoleModifier();
+    final shootSkill = pit.data.stats.shoots / 100;
+    final distanceFactor = pow(1.0 - (distToGoal / shootThreshold), 2);
+    final threatFactor = _isThreatened(_getOpponentGoal()) ? 0.8 : 1.5;
+
+    return zoneWeight * roleModifier * (0.5 * shootSkill + 0.3 * distanceFactor + 0.2 * threatFactor);
   }
 
-  void _clampPosition() {
-    position.x = position.x.clamp(radius, gameRef.size.x - radius);
-    position.y = position.y.clamp(radius, gameRef.size.y - radius);
+  double _getZoneWeight(String fieldZone) {
+    switch (fieldZone) {
+      case 'defensive':
+        return 0.95;
+      case 'middle':
+        return 0.75;
+      case 'attacking':
+        return 0.4;
+      default:
+        return 0.5;
+    }
   }
 
+  double _getShootZoneWeight(String fieldZone, double distToGoal) {
+    switch (fieldZone) {
+      case 'defensive':
+        return 0.0;
+      case 'middle':
+        return 0.05;
+      case 'attacking':
+        return distToGoal < 50 ? 1.2 : 0.9;
+      default:
+        return 0.5;
+    }
+  }
+
+  double _getRoleModifier() {
+    switch (pit.position) {
+      case PlayerPosition.cb:
+      case PlayerPosition.lb:
+      case PlayerPosition.rb:
+        return 1.2;
+      case PlayerPosition.dm:
+      case PlayerPosition.cm:
+      case PlayerPosition.am:
+      case PlayerPosition.lm:
+      case PlayerPosition.rm:
+        return 1.0;
+      case PlayerPosition.ss:
+      case PlayerPosition.st:
+      case PlayerPosition.lw:
+      case PlayerPosition.rw:
+      case PlayerPosition.cf:
+        return 0.8;
+      default:
+        return 1.0;
+    }
+  }
+
+  double _getDribbleRoleModifier() {
+    switch (pit.position) {
+      case PlayerPosition.cb:
+        return 0.6;
+      case PlayerPosition.lb:
+      case PlayerPosition.rb:
+        return 0.8;
+      case PlayerPosition.dm:
+      case PlayerPosition.cm:
+      case PlayerPosition.am:
+        return 1.0;
+      case PlayerPosition.lm:
+      case PlayerPosition.rm:
+      case PlayerPosition.lw:
+      case PlayerPosition.rw:
+        return 1.4;
+      case PlayerPosition.ss:
+      case PlayerPosition.st:
+      case PlayerPosition.cf:
+        return 1.2;
+      default:
+        return 1.0;
+    }
+  }
+
+  double _getShootRoleModifier() {
+    switch (pit.position) {
+      case PlayerPosition.cb:
+        return 0.4;
+      case PlayerPosition.rb:
+      case PlayerPosition.lb:
+        return 0.5;
+      case PlayerPosition.cm:
+      case PlayerPosition.dm:
+      case PlayerPosition.am:
+        return 0.9;
+      case PlayerPosition.lw:
+      case PlayerPosition.rw:
+      case PlayerPosition.rm:
+      case PlayerPosition.lm:
+        return 1.1;
+      case PlayerPosition.ss:
+      case PlayerPosition.st:
+      case PlayerPosition.cf:
+        return 1.3;
+      default:
+        return 1.0;
+    }
+  }
+
+  bool _shouldPass(double time) {
+    return (time - _lastPassTime) > passCooldown && _isThreatened(_getOpponentGoal());
+  }
+
+  bool _randomSkipPassDecision() {
+    return gameRef.random.nextDouble() < 0.1;
+  }
+
+  // Position methods
   Vector2 getHomePosition() {
     final fieldSize = gameRef.size;
     final isLeft = gameRef.isTeamOnLeftSide(pit.teamId);
@@ -882,21 +839,34 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     return Vector2(xZone, yZone);
   }
 
-  bool _randomSkipPassDecision() {
-    return gameRef.random.nextDouble() < 0.1;
+  void _clampPosition() {
+    position.x = position.x.clamp(radius, gameRef.size.x - radius);
+    position.y = position.y.clamp(radius, gameRef.size.y - radius);
   }
 
-  @override
-  void render(Canvas canvas) {
+  // Goal methods
+  GoalComponent _getOpponentGoal() {
+    final isTeamOnLeft = gameRef.isTeamOnLeftSide(pit.teamId);
+    return isTeamOnLeft ? gameRef.rightGoal : gameRef.leftGoal;
+  }
+
+  // Rendering methods
+  void _renderShadow(Canvas canvas) {
     final shadowPaint = Paint()..color = Colors.black.withOpacity(0.25);
     canvas.drawCircle(Offset(2, 3), radius * 0.95, shadowPaint);
+  }
 
+  void _renderPlayerOutline(Canvas canvas) {
     final outlinePaint = Paint()..color = Colors.black;
     canvas.drawCircle(Offset.zero, radius + 2.0, outlinePaint);
+  }
 
+  void _renderPlayerFill(Canvas canvas) {
     final fillPaint = Paint()..color = pit.teamId == gameRef.teamA.id ? gameRef.teamA.color : gameRef.teamB.color;
     canvas.drawCircle(Offset.zero, radius, fillPaint);
+  }
 
+  void _renderPlayerNumber(Canvas canvas) {
     final textPainter = TextPainter(
       text: TextSpan(
         text: pit.number.toString(),
