@@ -8,6 +8,8 @@ import '../match_game.dart';
 import 'ball_component.dart';
 import 'goal_component.dart';
 
+enum TeamState { attack, defence, counter, neutral }
+
 final Map<PlayerPosition, Offset> basePositions = {
   PlayerPosition.gk: Offset(0.05, 0.5),
   PlayerPosition.cb: Offset(0.25, 0.5),
@@ -28,15 +30,15 @@ final Map<PlayerPosition, Offset> basePositions = {
 /// Компонент игрока
 class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   // Константы
-  static const double playerRadius = 14.0; // Радиус игрока
+  static const double playerRadius = 14.0; // константа радиуса
   static const double stealCooldown = 2.0; // Время между попытками отбора
   static const double passCooldown = 2.0; // Время между передачами
 
   final PlayerInTeamModel pit;
 
-  double radius = playerRadius; // Физический радиус
+  double radius = playerRadius; // инстанс-радиус (избегаем ошибок доступа к статике)
   Vector2 velocity = Vector2.zero(); // Текущая скорость
-  BallComponent? ball; // Ссылка на мяч
+  BallComponent? ball; // Ссылка на мяч (может устанавливаться через assignBallRef)
 
   // Таймеры
   double _lastStealTime = 0; // Время последнего отбора
@@ -44,17 +46,22 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
   double _dt = 0;
 
-  // Добавлены переменные для периодического обновления позиции
+  // Позиционирование
   Vector2 desiredPosition = Vector2.zero();
   double positionUpdateTimer = 0.0;
   double positionUpdateInterval = 3.0; // Обновление каждые 3-5 секунд
 
+  // Новые параметры для улучшенной логики
+  double fatigue = 0.0; // усталость (можно инкрементить в game loop)
+  TeamState teamState = TeamState.neutral;
+  double microMoveTimer = 0.0; // таймер микро-движений
+
   PlayerComponent({required this.pit, Vector2? position})
-    : super(position: position ?? Vector2.zero(), size: Vector2.all(28)) {
+    : super(position: position ?? Vector2.zero(), size: Vector2.all(playerRadius * 2)) {
     desiredPosition = Vector2.zero(); // Инициализация желаемой позиции
   }
 
-  /// Установка ссылки на мяч
+  /// Установка ссылки на мяч (совместимость с остальным кодом)
   void assignBallRef(BallComponent b) => ball = b;
 
   bool _isAttackingTeam() => ball?.owner?.pit.teamId == pit.teamId;
@@ -69,6 +76,9 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
 
     if (ball == null) return;
 
+    // Обновление глобального состояния команды
+    _updateTeamState();
+
     // Обновление таймера для желаемой позиции
     positionUpdateTimer -= dt;
     if (positionUpdateTimer <= 0) {
@@ -76,19 +86,74 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
       positionUpdateTimer = positionUpdateInterval + gameRef.random.nextDouble() * 2.0; // 3-5 секунд
     }
 
+    // Микро-движения, чтобы игроки не стояли статично
+    _applyMicroAdjustments(dt);
+
     _handleBallInteraction();
     _clampPosition();
   }
 
-  /// Обновление желаемой позиции
+  /// Обновление состояния команды: attack / defence / counter / neutral
+  void _updateTeamState() {
+    final ballOwnerTeam = ball?.owner?.pit.teamId;
+    if (ballOwnerTeam == pit.teamId) {
+      teamState = TeamState.attack;
+    } else if (ballOwnerTeam == null) {
+      teamState = TeamState.neutral;
+    } else {
+      // попытка детектировать контратаку
+      if (_isCounterAttackOpportunity()) {
+        teamState = TeamState.counter;
+      } else {
+        teamState = TeamState.defence;
+      }
+    }
+  }
+
+  bool _isCounterAttackOpportunity() {
+    final ballPos = ball?.position ?? Vector2.zero();
+    final isInMiddle = ballPos.x > gameRef.size.x * 0.3 && ballPos.x < gameRef.size.x * 0.7;
+    // простая эвристика: если у команды быстрый игрок и мяч в середине — возможен контр
+    final hasFastPlayers = pit.data.stats.maxSpeed > 70;
+    return isInMiddle && hasFastPlayers;
+  }
+
+  /// Добавляет небольшие случайные смещения, чтобы игроки делали микро-движения
+  void _applyMicroAdjustments(double dt) {
+    microMoveTimer -= dt;
+    if (microMoveTimer <= 0) {
+      final offset = Vector2((gameRef.random.nextDouble() - 0.5) * 4, (gameRef.random.nextDouble() - 0.5) * 4);
+      desiredPosition += offset;
+      microMoveTimer = 0.3 + gameRef.random.nextDouble() * 0.8;
+    }
+  }
+
+  /// Обновление желаемой позиции (использует прогноз мяча)
   void _updateDesiredPosition() {
     final attacking = _isAttackingTeam();
-    final ballPos = ball?.position ?? Vector2.zero();
+
+    // Время предсказания зависит от расстояния до мяча (чем дальше — тем длиннее предсказание)
+    final distToBall = (ball!.position - position).length;
+    final secondsAhead = (0.5 + (distToBall / (gameRef.size.x)).clamp(0.0, 1.0)) * (attacking ? 1.0 : 0.6);
+
+    final predictedBallPos = predictBallPosition(secondsAhead);
     final basePos = getHomePosition();
-    final attackShift = _calculateTacticalShift(ballPos, attacking);
+    final attackShift = _calculateTacticalShift(predictedBallPos, attacking);
     final randomShift = _calculateRandomPositionShift(attacking);
     desiredPosition = basePos + attackShift + randomShift;
     desiredPosition = _avoidNearbyOpponents(desiredPosition);
+  }
+
+  /// Простое предсказание позиции мяча через некоторое время (сек)
+  Vector2 predictBallPosition(double secondsAhead) {
+    if (ball == null) return Vector2.zero();
+    // Если мяч у игрока — предсказываем по владельцу; иначе по текущей скорости мяча.
+    if (ball!.owner != null) {
+      final owner = ball!.owner!;
+      return ball!.position + owner.velocity * secondsAhead;
+    } else {
+      return ball!.position + ball!.velocity * secondsAhead;
+    }
   }
 
   /// Основная логика взаимодействия с мячом
@@ -363,7 +428,16 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
       return false;
     }
 
-    _executePass(time, teammate, passTarget);
+    // Добавляем неточность паса в зависимости от усталости и навыков
+    final inaccuracy = (1 - (pit.data.stats.lowPass / 100)) * (1 + fatigue);
+    final noisyTarget =
+        passTarget +
+        Vector2(
+          (gameRef.random.nextDouble() - 0.5) * 20 * inaccuracy,
+          (gameRef.random.nextDouble() - 0.5) * 20 * inaccuracy,
+        );
+
+    _executePass(time, teammate, noisyTarget);
     return true;
   }
 
@@ -372,7 +446,8 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final passPower = _calculatePassPower(teammate.position);
     ball!.kickTowards(target, passPower, time, this);
     _lastPassTime = time;
-    print("Player ${pit.number} passed to ${teammate.pit.number}");
+    // можно логировать при отладке
+    // print("Player ${pit.number} passed to ${teammate.pit.number}");
   }
 
   /// Расчет цели для паса с упреждением
@@ -402,7 +477,7 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   double _calculatePassPower(Vector2 target) {
     final basePower = (target - position).length * 3.0;
     final passSkill = pit.data.stats.lowPass / 100;
-    return (basePower * (0.9 + 0.2 * passSkill)).clamp(200, 800);
+    return (basePower * (0.9 + 0.2 * passSkill)).clamp(200.0, 800.0) as double;
   }
 
   /// Перемещение с мячом
@@ -429,26 +504,28 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
   void _shootAtGoal(Vector2 goalPos, double time) {
     final distToGoal = (goalPos - position).length;
     final fieldZone = _getFieldZone(position, goalPos, gameRef.size.x);
-    print(
-      "Player ${pit.number} (team ${pit.teamId}, role ${pit.position.toString().split('.').last}) shoots from position (${position.x.toStringAsFixed(1)}, ${position.y.toStringAsFixed(1)}) in zone $fieldZone with distance $distToGoal",
-    );
 
+    // Основная логика (как раньше), но с добавлением неточности/усталости
     final shootSkill = pit.data.stats.shoots / 100;
     final goalHeight = 60.0;
     final verticalSpread = goalHeight * 0.5 * (1 - shootSkill);
-    final dy = (gameRef.random.nextDouble() - 0.5) * 2 * verticalSpread;
-    final target = goalPos + Vector2(0, dy);
+
+    // учет усталости и случайности
+    final fatigueFactor = 1.0 + fatigue * 0.5;
+    final dy = (gameRef.random.nextDouble() - 0.5) * 2 * verticalSpread * fatigueFactor;
+    final noisyGoal = goalPos + Vector2(0, dy);
+
     final minPower = 400.0;
     final maxPower = 1000.0;
     final distFactor = (distToGoal / 500).clamp(0.0, 1.0);
     final power = minPower + (maxPower - minPower) * distFactor * (0.7 + 0.3 * shootSkill);
 
-    if (!_isShotSafe(position, target, ballSpeed: power)) {
+    if (!_isShotSafe(position, noisyGoal, ballSpeed: power)) {
       return;
     }
 
-    ball!.kickTowards(target, power, time, this);
-    print("Player ${pit.number} shoots at goal with power ${power.toStringAsFixed(1)}");
+    ball!.kickTowards(noisyGoal, power, time, this);
+    // print("Player ${pit.number} shoots at goal with power ${power.toStringAsFixed(1)}");
   }
 
   bool _isShotSafe(Vector2 from, Vector2 to, {required double ballSpeed}) {
@@ -594,11 +671,11 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     final fieldLength = gameRef.size.x;
     final fieldWidth = gameRef.size.y;
 
-    // Увеличены коэффициенты для большего смещения к мячу
+    // Более агрессивное смещение к мячу (регулируется тактикой)
     final attackBiasX = ((ballPos.x - position.x) / fieldLength) * 120; // Было 80
     final sideBiasY = ((ballPos.y - position.y) / fieldWidth) * 60; // Было 40
 
-    final multiplier = attacking ? 1.0 : 0.3;
+    final multiplier = attacking ? (teamState == 'counter' ? 1.4 : 1.0) : 0.3;
 
     return Vector2(attackBiasX * multiplier, sideBiasY * multiplier);
   }
@@ -646,11 +723,11 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
     if (shiftChance < shiftThreshold) {
       final isTeamOnLeft = gameRef.isTeamOnLeftSide(pit.teamId);
 
-      // Увеличено смещение по X
+      // Увеличено смещение по X в агрессивной фазе
       if (attacking) {
-        xShift = isTeamOnLeft ? 100 : -100; // Было 50
+        xShift = isTeamOnLeft ? 100 : -100;
       } else {
-        xShift = isTeamOnLeft ? -100 : 100; // Было 50
+        xShift = isTeamOnLeft ? -100 : 100;
       }
 
       final isWidePlayer = [
@@ -662,11 +739,9 @@ class PlayerComponent extends PositionComponent with HasGameRef<MatchGame> {
         PlayerPosition.rw,
       ].contains(pit.position);
 
-      // Увеличен диапазон по Y
-      final yRange = isWidePlayer ? 80 : 40; // Было 40 и 20
+      final yRange = isWidePlayer ? 80 : 40;
       yShift = (random.nextDouble() - 0.5) * yRange;
 
-      // Опционально: усиление смещения по ролям
       double xShiftMultiplier;
       switch (pit.position) {
         case PlayerPosition.st:
