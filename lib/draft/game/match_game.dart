@@ -12,6 +12,9 @@ import 'components/ball_component.dart';
 import 'components/goal_component.dart';
 import 'components/player_component.dart';
 import 'components/score_component.dart';
+import 'components/time_component.dart';
+
+enum GameState { firstHalf, halftime, secondHalf, finished }
 
 class MatchGame extends FlameGame {
   final fieldSize = Vector2(1000, 600); // Настоящее поле
@@ -23,11 +26,12 @@ class MatchGame extends FlameGame {
 
   double elapsedTime = 0;
   double halftimeDuration = 45;
+  GameState gameState = GameState.firstHalf;
 
   final List<PlayerComponent> players = [];
 
-  late TeamModel teamA; // left
-  late TeamModel teamB; // right
+  late TeamModel teamA; // left in first half
+  late TeamModel teamB; // right in first half
   int teamAscore = 0;
   int teamBscore = 0;
 
@@ -37,16 +41,14 @@ class MatchGame extends FlameGame {
   }
 
   bool isTeamOnLeftSide(String teamId) {
-    final isFirstHalf = elapsedTime < halftimeDuration;
+    final isFirstHalf = gameState == GameState.firstHalf;
     final isTeamALeft = isFirstHalf;
     return teamId == teamA.id ? isTeamALeft : !isTeamALeft;
   }
 
   bool isOwnHalf(String teamId, Vector2 position) {
     final fieldMiddle = size.x / 2;
-
-    // Пример: если team 0 играет влево в первом тайме, вправо — во втором
-    final isFirstHalf = elapsedTime < halftimeDuration;
+    final isFirstHalf = gameState == GameState.firstHalf;
     final isTeamAOnLeft = isFirstHalf;
     final isOnLeftSide = position.x < fieldMiddle;
 
@@ -65,13 +67,13 @@ class MatchGame extends FlameGame {
   Future<void> onLoad() async {
     _setupField();
     _setupGoals();
-
     _setupBall();
     _setupPlayers();
 
     // Установите камеру для следования за мячом
     camera.smoothFollow(ball, stiffness: 0.85);
     camera.viewport.add(ScoreComponent(getScore: () => '${teamA.name}  |$teamAscore : $teamBscore|  ${teamB.name}'));
+    camera.viewport.add(TimeComponent(getTime: () => "${elapsedTime.toStringAsFixed(0)}'"));
 
     return super.onLoad();
   }
@@ -406,10 +408,54 @@ class MatchGame extends FlameGame {
   @override
   void update(double dt) {
     super.update(dt);
+
+    if (gameState == GameState.finished) {
+      return; // Stop updates when game is finished
+    }
+
     elapsedTime += dt;
 
-    _checkGoals();
-    _clampComponentsToField();
+    // Check for halftime transition
+    if (gameState == GameState.firstHalf && elapsedTime >= halftimeDuration) {
+      gameState = GameState.halftime;
+      _handleHalftime();
+    }
+    // Check for second half end
+    else if (gameState == GameState.secondHalf && elapsedTime >= 2 * halftimeDuration) {
+      gameState = GameState.finished;
+      print('🏁 Match finished! Final score: ${teamA.name} $teamAscore : $teamBscore ${teamB.name}');
+      return;
+    }
+
+    // Only update game logic during active halves
+    if (gameState == GameState.firstHalf || gameState == GameState.secondHalf) {
+      _checkGoals();
+      _clampComponentsToField();
+    }
+  }
+
+  void _handleHalftime() {
+    print('🕒 Halftime! Teams will swap sides.');
+    // Reset positions and ball for second half
+    _resetForSecondHalf();
+  }
+
+  void _resetForSecondHalf() {
+    gameState = GameState.secondHalf;
+    // Reset ball to center
+    ball.position = size / 2;
+    ball.velocity = Vector2.zero();
+
+    // Clear ball ownership
+    // ball.takeOwnership(null);
+
+    // Reposition teams on opposite sides
+    _resetPlayersPositions();
+    // Assign new ball owner randomly
+    final firstOwner = players.random(random);
+    ball.takeOwnership(firstOwner);
+    final directionToCenter = (size / 2 - firstOwner.position).normalized();
+    ball.position = firstOwner.position + directionToCenter * (firstOwner.radius + ball.radius + 1);
   }
 
   void _checkGoals() {

@@ -1,13 +1,13 @@
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
-class ScoreComponent extends TextComponent {
-  final String Function() getScore;
+class TimeComponent extends TextComponent {
+  final String Function() getTime;
 
-  ScoreComponent({required this.getScore})
+  TimeComponent({required this.getTime})
     : super(
         anchor: Anchor.topLeft,
-        position: Vector2(10, 30),
+        position: Vector2(10, 60),
         textRenderer: TextPaint(
           style: const TextStyle(
             color: Colors.white,
@@ -21,6 +21,6 @@ class ScoreComponent extends TextComponent {
   @override
   void update(double dt) {
     super.update(dt);
-    text = getScore();
+    text = getTime();
   }
 }
