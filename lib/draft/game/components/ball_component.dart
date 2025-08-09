@@ -1,13 +1,16 @@
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
+import '../match_game.dart';
 import 'player_component.dart';
 
-class BallComponent extends PositionComponent {
+class BallComponent extends PositionComponent with HasGameRef<MatchGame> {
   final double radius = 6.0;
   Vector2 velocity = Vector2.zero();
   PlayerComponent? owner;
   double lastKickTime = 0;
+
+  double lastOwnershipTime = 0.0;
 
   BallComponent({required Vector2 position}) : super(position: position, size: Vector2.all(12));
 
@@ -24,9 +27,9 @@ class BallComponent extends PositionComponent {
     lastKickTime = currentTime;
   }
 
-  void takeOwnership(PlayerComponent player) {
-    if (owner == player) return;
-    owner = player;
+  void takeOwnership(PlayerComponent owner) {
+    this.owner = owner;
+    lastOwnershipTime = gameRef.elapsedTime;
   }
 
   bool canBeKickedBy(PlayerComponent player, double currentTime) {
