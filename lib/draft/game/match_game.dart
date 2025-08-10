@@ -17,19 +17,19 @@ import 'components/time_component.dart';
 // Добавим в начало класса MatchGame
 final Map<PlayerPosition, Vector2> _initialPositions = {
   PlayerPosition.gk: Vector2(0.05, 0.5),
-  PlayerPosition.cb: Vector2(0.15, 0.5),
-  PlayerPosition.rb: Vector2(0.15, 0.7),
-  PlayerPosition.lb: Vector2(0.15, 0.3),
-  PlayerPosition.dm: Vector2(0.25, 0.5),
-  PlayerPosition.cm: Vector2(0.35, 0.5),
-  PlayerPosition.am: Vector2(0.45, 0.5),
-  PlayerPosition.lm: Vector2(0.35, 0.3),
-  PlayerPosition.rm: Vector2(0.35, 0.7),
-  PlayerPosition.lw: Vector2(0.55, 0.3),
-  PlayerPosition.rw: Vector2(0.55, 0.7),
-  PlayerPosition.cf: Vector2(0.55, 0.5),
-  PlayerPosition.ss: Vector2(0.55, 0.45),
-  PlayerPosition.st: Vector2(0.55, 0.55),
+  PlayerPosition.cb: Vector2(0.1, 0.5),
+  PlayerPosition.rb: Vector2(0.1, 0.7),
+  PlayerPosition.lb: Vector2(0.1, 0.3),
+  PlayerPosition.dm: Vector2(0.15, 0.5),
+  PlayerPosition.cm: Vector2(0.2, 0.5),
+  PlayerPosition.am: Vector2(0.25, 0.5),
+  PlayerPosition.lm: Vector2(0.25, 0.3),
+  PlayerPosition.rm: Vector2(0.25, 0.7),
+  PlayerPosition.lw: Vector2(0.3, 0.3),
+  PlayerPosition.rw: Vector2(0.3, 0.7),
+  PlayerPosition.cf: Vector2(0.3, 0.5),
+  PlayerPosition.ss: Vector2(0.3, 0.45),
+  PlayerPosition.st: Vector2(0.3, 0.55),
 };
 
 enum GameState { firstHalf, halftime, secondHalf, finished }
@@ -195,23 +195,22 @@ class MatchGame extends FlameGame {
     final teamBplayers = players.where((p) => p.pit.teamId == teamB.id).toList();
 
     if (isTeamOnLeftSide(teamA.id)) {
-      _positionTeam(teamAplayers, 100); // Team A on left
-      _positionTeam(teamBplayers, size.x - 100); // Team B on right
+      _positionTeam(teamAplayers, true); // слева
+      _positionTeam(teamBplayers, false); // справа
     } else {
-      _positionTeam(teamBplayers, 100); // Team B on left
-      _positionTeam(teamAplayers, size.x - 100); // Team A on right
+      _positionTeam(teamBplayers, true); // слева
+      _positionTeam(teamAplayers, false); // справа
     }
   }
 
-  void _positionTeam(List<PlayerComponent> team, double baseX) {
-    final isLeftTeam = baseX < size.x / 2;
-
+  void _positionTeam(List<PlayerComponent> team, bool isLeftTeam) {
     for (final player in team) {
       final relativePos = _initialPositions[player.pit.position] ?? Vector2(0.5, 0.5);
 
-      // Рассчитываем абсолютные координаты с учетом стороны поля
-      final xPos = isLeftTeam ? baseX + relativePos.x * size.x * 0.5 : baseX - (1.0 - relativePos.x) * size.x * 0.5;
+      // Для правой команды отражаем X-координату
+      final adjustedX = isLeftTeam ? relativePos.x : (1.0 - relativePos.x);
 
+      final xPos = adjustedX * size.x;
       final yPos = relativePos.y * size.y;
 
       // Добавляем случайный разброс
@@ -336,11 +335,11 @@ class MatchGame extends FlameGame {
     final teamBplayers = players.where((p) => p.pit.teamId == teamB.id).toList();
 
     if (isTeamOnLeftSide(teamA.id)) {
-      _positionTeam(teamAplayers, size.x * 0.1); // 10% от ширины поля
-      _positionTeam(teamBplayers, size.x * 0.7); // 70% от ширины поля
+      _positionTeam(teamAplayers, true); // 10% от ширины поля
+      _positionTeam(teamBplayers, false); // 70% от ширины поля
     } else {
-      _positionTeam(teamBplayers, size.x * 0.1);
-      _positionTeam(teamAplayers, size.x * 0.7);
+      _positionTeam(teamAplayers, false);
+      _positionTeam(teamBplayers, true);
     }
   }
 
